@@ -293,6 +293,24 @@ services:
       - ec-kafka-dev-net
     restart: unless-stopped
 
+  # ── Web ML: página de predicciones IFERSAN (FastAPI + Chart.js) ─────────────
+  ml-web:
+    build:
+      context: .
+      dockerfile: ml/Dockerfile.web
+    image: casamarket-ml-web:latest
+    container_name: ml-web
+    ports:
+      - "8501:8000"     # http://localhost:8501
+    environment:
+      DATABASE_URL: "postgresql://casamarket:casamarket@postgres:5432/casamarket"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ec-kafka-dev-net
+    restart: unless-stopped
+
   # ── Spark ML Streaming: inferencia en tiempo real con modelo entrenado ───────
   spark-ml:
     image: jupyter/pyspark-notebook:latest
