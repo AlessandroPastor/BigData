@@ -293,6 +293,31 @@ services:
       - ec-kafka-dev-net
     restart: unless-stopped
 
+  # ── Spark ML Streaming: inferencia en tiempo real con modelo entrenado ───────
+  spark-ml:
+    image: jupyter/pyspark-notebook:latest
+    container_name: spark-ml
+    ports:
+      - "4043:4040"     # Spark UI: http://localhost:4043
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        spark-submit \
+          --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.postgresql:postgresql:42.7.3 \
+          --master local[2] \
+          /home/jovyan/app/job_ml_streaming.py
+    volumes:
+      - ./spark_streaming:/home/jovyan/app
+      - ./output:/home/jovyan/output
+    depends_on:
+      ec-kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - ec-kafka-dev-net
+    restart: unless-stopped
+
   # ── MySQL Sync: consume topic Debezium → escribe en MySQL Laragon ─────────────
   mysql-sync:
     build:
