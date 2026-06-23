@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"z:/Universidad/IXCICLO/BigData/UnidadII/.venv/Scripts/pip.exe\" uninstall *)",
+      "Bash(\"z:/Universidad/IXCICLO/BigData/UnidadII/.venv/Scripts/pip.exe\" install *)",
+      "Bash(\"z:/Universidad/IXCICLO/BigData/UnidadII/.venv/Scripts/python.exe\" -c \"from kafka import KafkaProducer; print\\('kafka-python-ng OK'\\)\")"
+    ]
+  }
+}

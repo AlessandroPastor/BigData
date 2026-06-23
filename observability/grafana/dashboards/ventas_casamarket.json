@@ -1,0 +1,195 @@
+{
+  "title": "CasaMarket — Ventas & Prediccion S9",
+  "uid": "casamarket-ventas",
+  "schemaVersion": 38,
+  "version": 4,
+  "refresh": "1m",
+  "time": { "from": "2026-01-01T00:00:00.000Z", "to": "2026-12-31T23:59:59.000Z" },
+  "timepicker": {},
+  "panels": [
+
+    { "id": 1, "type": "stat", "title": "Total Ingresos Reales (S/)",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{ "rawSql": "SELECT ROUND(SUM(total)::NUMERIC,2) AS value FROM ventas WHERE total > 0", "format": "table", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "currencyPEN", "color": { "mode": "fixed", "fixedColor": "green" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } } }
+    },
+
+    { "id": 2, "type": "stat", "title": "Transacciones registradas",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{ "rawSql": "SELECT COUNT(*) AS value FROM ventas WHERE total > 0", "format": "table", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "blue" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } } }
+    },
+
+    { "id": 3, "type": "stat", "title": "Productos unicos",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{ "rawSql": "SELECT COUNT(DISTINCT TRIM(producto)) AS value FROM ventas WHERE producto IS NOT NULL AND TRIM(producto) != ''", "format": "table", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "purple" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] } } }
+    },
+
+    { "id": 4, "type": "stat", "title": "Clientes unicos",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{ "rawSql": "SELECT COUNT(DISTINCT TRIM(cliente)) AS value FROM ventas WHERE cliente IS NOT NULL AND TRIM(cliente) != ''", "format": "table", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "orange" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] } } }
+    },
+
+    { "id": 5, "type": "timeseries", "title": "Ingresos diarios historicos (S/)",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT fecha::TIMESTAMPTZ AS time, ROUND(SUM(total)::NUMERIC,2) AS \"Ingresos S/\" FROM ventas WHERE fecha IS NOT NULL AND total > 0 GROUP BY fecha ORDER BY fecha",
+        "format": "time_series", "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "currencyPEN", "color": { "mode": "palette-classic" } } },
+      "options": { "tooltip": { "mode": "single" } }
+    },
+
+    { "id": 6, "type": "barchart", "title": "Top 15 Productos por Ingresos",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 9 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT TRIM(producto) AS producto, ROUND(SUM(total)::NUMERIC,2) AS ingresos FROM ventas WHERE producto IS NOT NULL AND TRIM(producto) != '' AND total > 0 GROUP BY TRIM(producto) ORDER BY ingresos DESC LIMIT 15",
+        "format": "table", "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "currencyPEN" } },
+      "options": { "orientation": "horizontal", "xTickLabelRotation": 0 }
+    },
+
+    { "id": 7, "type": "barchart", "title": "Top 10 Clientes por Ingresos",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 9 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT TRIM(cliente) AS cliente, ROUND(SUM(total)::NUMERIC,2) AS ingresos FROM ventas WHERE cliente IS NOT NULL AND TRIM(cliente) != '' AND total > 0 GROUP BY TRIM(cliente) ORDER BY ingresos DESC LIMIT 10",
+        "format": "table", "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "currencyPEN" } },
+      "options": { "orientation": "horizontal" }
+    },
+
+    { "id": 8, "type": "piechart", "title": "Ingresos por Marca",
+      "gridPos": { "x": 0, "y": 21, "w": 8, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT TRIM(marca) AS marca, ROUND(SUM(total)::NUMERIC,2) AS ingresos FROM ventas WHERE marca IS NOT NULL AND TRIM(marca) != '' AND total > 0 GROUP BY TRIM(marca) ORDER BY ingresos DESC LIMIT 12",
+        "format": "table", "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "currencyPEN" } },
+      "options": { "pieType": "donut", "legend": { "displayMode": "table", "placement": "right" } }
+    },
+
+    { "id": 9, "type": "piechart", "title": "Ingresos por Categoria",
+      "gridPos": { "x": 8, "y": 21, "w": 8, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT TRIM(categoria) AS categoria, ROUND(SUM(total)::NUMERIC,2) AS ingresos FROM ventas WHERE categoria IS NOT NULL AND TRIM(categoria) != '' AND total > 0 GROUP BY TRIM(categoria) ORDER BY ingresos DESC LIMIT 10",
+        "format": "table", "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "currencyPEN" } },
+      "options": { "pieType": "donut", "legend": { "displayMode": "table", "placement": "right" } }
+    },
+
+    { "id": 10, "type": "barchart", "title": "Ingresos por Vendedor",
+      "gridPos": { "x": 16, "y": 21, "w": 8, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT TRIM(vendedor) AS vendedor, ROUND(SUM(total)::NUMERIC,2) AS ingresos FROM ventas WHERE vendedor IS NOT NULL AND TRIM(vendedor) != '' AND total > 0 GROUP BY TRIM(vendedor) ORDER BY ingresos DESC LIMIT 10",
+        "format": "table", "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "currencyPEN" } },
+      "options": { "orientation": "horizontal" }
+    },
+
+    { "id": 11, "type": "table", "title": "Ultimas ventas registradas",
+      "gridPos": { "x": 0, "y": 29, "w": 24, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT fecha::TEXT AS fecha, TRIM(producto) AS producto, TRIM(marca) AS marca, TRIM(categoria) AS categoria, cantidad, ROUND(total::NUMERIC,2) AS total, TRIM(cliente) AS cliente, TRIM(vendedor) AS vendedor FROM ventas WHERE fecha IS NOT NULL AND total > 0 ORDER BY procesado_ts DESC LIMIT 50",
+        "format": "table", "refId": "A"
+      }],
+      "options": { "sortBy": [{ "displayName": "fecha", "desc": true }] }
+    },
+
+    { "id": 20, "type": "text", "title": "",
+      "gridPos": { "x": 0, "y": 37, "w": 24, "h": 2 },
+      "options": { "mode": "markdown", "content": "## Predicciones ML 2026 — Modelo: sklearn LinearRegression | Entrenado con ventas reales CasaMarket (Abr–May 2026)" }
+    },
+
+    { "id": 12, "type": "stat", "title": "Ingresos proyectados 2026 — Top 15 productos",
+      "gridPos": { "x": 0, "y": 39, "w": 8, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{ "rawSql": "SELECT ROUND(SUM(ingresos_pred)::NUMERIC,2) AS value FROM predicciones_2026", "format": "table", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "currencyPEN", "color": { "mode": "fixed", "fixedColor": "semi-dark-green" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "semi-dark-green", "value": null }] } } }
+    },
+
+    { "id": 13, "type": "stat", "title": "Producto #1 proyectado (ingresos anuales 2026)",
+      "gridPos": { "x": 8, "y": 39, "w": 8, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{ "rawSql": "SELECT ROUND(SUM(ingresos_pred)::NUMERIC,2) AS value FROM predicciones_2026 WHERE TRIM(producto)='PEPSI 2000ML'", "format": "table", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "currencyPEN", "displayName": "PEPSI 2000ML", "color": { "mode": "fixed", "fixedColor": "yellow" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "yellow", "value": null }] } } }
+    },
+
+    { "id": 14, "type": "stat", "title": "Producto #2 proyectado (ingresos anuales 2026)",
+      "gridPos": { "x": 16, "y": 39, "w": 8, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{ "rawSql": "SELECT ROUND(SUM(ingresos_pred)::NUMERIC,2) AS value FROM predicciones_2026 WHERE TRIM(producto)='ESCOCESA 2250ml'", "format": "table", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "currencyPEN", "displayName": "ESCOCESA 2250ml", "color": { "mode": "fixed", "fixedColor": "light-orange" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "light-orange", "value": null }] } } }
+    },
+
+    { "id": 15, "type": "barchart", "title": "Top 10 Productos — Proyectado 2026 vs Real historico (S/)",
+      "gridPos": { "x": 0, "y": 43, "w": 14, "h": 10 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT TRIM(producto) AS producto, ROUND(SUM(ingresos_pred)::NUMERIC,2) AS \"Proyectado 2026\", COALESCE(ROUND(SUM(ingresos_real)::NUMERIC,2), 0) AS \"Real historico\" FROM predicciones_2026 GROUP BY TRIM(producto) ORDER BY SUM(ingresos_pred) DESC LIMIT 10",
+        "format": "table", "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "currencyPEN" } },
+      "options": { "orientation": "horizontal", "xTickLabelRotation": 0, "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+
+    { "id": 16, "type": "piechart", "title": "Distribucion % proyectada 2026 por producto",
+      "gridPos": { "x": 14, "y": 43, "w": 10, "h": 10 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT TRIM(producto) AS producto, ROUND(SUM(ingresos_pred)::NUMERIC,2) AS proyectado FROM predicciones_2026 GROUP BY TRIM(producto) ORDER BY proyectado DESC LIMIT 8",
+        "format": "table", "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "currencyPEN" } },
+      "options": { "pieType": "donut", "legend": { "displayMode": "table", "placement": "right" } }
+    },
+
+    { "id": 17, "type": "timeseries", "title": "Tendencia mensual proyectada 2026 — Top 4 productos (S/)",
+      "gridPos": { "x": 0, "y": 53, "w": 24, "h": 9 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [
+        { "rawSql": "SELECT mes::TIMESTAMPTZ AS time, ROUND(ingresos_pred::NUMERIC,2) AS \"PEPSI 2000ML\" FROM predicciones_2026 WHERE TRIM(producto)='PEPSI 2000ML' ORDER BY mes", "format": "time_series", "refId": "A" },
+        { "rawSql": "SELECT mes::TIMESTAMPTZ AS time, ROUND(ingresos_pred::NUMERIC,2) AS \"ESCOCESA 2250ml\" FROM predicciones_2026 WHERE TRIM(producto)='ESCOCESA 2250ml' ORDER BY mes", "format": "time_series", "refId": "B" },
+        { "rawSql": "SELECT mes::TIMESTAMPTZ AS time, ROUND(ingresos_pred::NUMERIC,2) AS \"PILSEN CALLAO 620 ML\" FROM predicciones_2026 WHERE TRIM(producto)='PILSEN CALLAO 620 ML' ORDER BY mes", "format": "time_series", "refId": "C" },
+        { "rawSql": "SELECT mes::TIMESTAMPTZ AS time, ROUND(ingresos_pred::NUMERIC,2) AS \"PEPSI AZUL 355ML\" FROM predicciones_2026 WHERE TRIM(producto)='PEPSI AZUL 355ML' ORDER BY mes", "format": "time_series", "refId": "D" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "currencyPEN", "color": { "mode": "palette-classic" } } },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+
+    { "id": 18, "type": "table", "title": "Tabla completa — Prediccion mensual por producto 2026",
+      "gridPos": { "x": 0, "y": 62, "w": 24, "h": 9 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT TO_CHAR(mes, 'Mon YYYY') AS mes, TRIM(producto) AS producto, ROUND(ingresos_pred::NUMERIC,2) AS \"Proyectado S/\", ROUND(unidades_pred::NUMERIC,0) AS \"Unidades est.\", COALESCE(ROUND(ingresos_real::NUMERIC,2)::TEXT, '-') AS \"Real historico\" FROM predicciones_2026 ORDER BY mes, ingresos_pred DESC",
+        "format": "table", "refId": "A"
+      }],
+      "options": { "sortBy": [{ "displayName": "Proyectado S/", "desc": true }] },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [{ "matcher": { "id": "byName", "options": "Proyectado S/" }, "properties": [{ "id": "unit", "value": "currencyPEN" }] }] }
+    }
+
+  ]
+}

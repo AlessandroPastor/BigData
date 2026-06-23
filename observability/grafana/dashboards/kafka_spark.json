@@ -1,0 +1,94 @@
+{
+  "title": "CasaMarket — Kafka + Spark S8",
+  "uid": "casamarket-s8",
+  "schemaVersion": 38,
+  "version": 2,
+  "refresh": "15s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Kafka Broker",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "casamarket-prom" },
+      "targets": [{ "expr": "up{job=\"kafka-exporter\"}", "refId": "A", "legendFormat": "broker" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "mappings": [{ "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }], "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }, "color": { "mode": "thresholds" } } }
+    },
+    {
+      "id": 2, "type": "stat", "title": "Topics activos",
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "casamarket-prom" },
+      "targets": [{ "expr": "count(kafka_topic_partitions) by (topic)", "refId": "A", "legendFormat": "topics" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } } }
+    },
+    {
+      "id": 3, "type": "stat", "title": "Mensajes totales (ventas.raw)",
+      "gridPos": { "x": 8, "y": 0, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "casamarket-prom" },
+      "targets": [{ "expr": "sum(kafka_topic_partition_current_offset{topic=\"casamarket.ventas.raw\"})", "refId": "A", "legendFormat": "mensajes" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "purple" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] } } }
+    },
+    {
+      "id": 4, "type": "stat", "title": "Mensajes totales (documento.detectado)",
+      "gridPos": { "x": 13, "y": 0, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "casamarket-prom" },
+      "targets": [{ "expr": "sum(kafka_topic_partition_current_offset{topic=\"casamarket.documento.detectado\"})", "refId": "A", "legendFormat": "mensajes" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "orange" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] } } }
+    },
+    {
+      "id": 5, "type": "gauge", "title": "Consumer Lag total",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "casamarket-prom" },
+      "targets": [{ "expr": "sum(kafka_consumergroup_lag_sum)", "refId": "A", "legendFormat": "lag" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "showThresholdLabels": false, "showThresholdMarkers": true },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "max": 1000, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 500 }] } } }
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Rate de mensajes por segundo (ventas.raw)",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "casamarket-prom" },
+      "targets": [
+        { "expr": "rate(kafka_topic_partition_current_offset{topic=\"casamarket.ventas.raw\"}[1m])", "refId": "A", "legendFormat": "msg/s ventas.raw" },
+        { "expr": "rate(kafka_topic_partition_current_offset{topic=\"casamarket.documento.detectado\"}[1m])", "refId": "B", "legendFormat": "msg/s documento.detectado" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "color": { "mode": "palette-classic" } } },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Consumer Lag por grupo",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "casamarket-prom" },
+      "targets": [
+        { "expr": "kafka_consumergroup_lag_sum", "refId": "A", "legendFormat": "{{consumergroup}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 500 }] } } }
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "Offset actual por topic",
+      "gridPos": { "x": 0, "y": 12, "w": 16, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "casamarket-prom" },
+      "targets": [
+        { "expr": "kafka_topic_partition_current_offset{topic=\"casamarket.ventas.raw\"}", "refId": "A", "legendFormat": "ventas.raw offset" },
+        { "expr": "kafka_topic_partition_current_offset{topic=\"casamarket.documento.detectado\"}", "refId": "B", "legendFormat": "documento.detectado offset" },
+        { "expr": "kafka_consumergroup_current_offset{consumergroup=\"casamarket-downloader\"}", "refId": "C", "legendFormat": "consumer downloader" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } } }
+    },
+    {
+      "id": 9, "type": "table", "title": "Consumer Groups — detalle de lag",
+      "gridPos": { "x": 16, "y": 12, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "casamarket-prom" },
+      "targets": [{ "expr": "kafka_consumergroup_lag", "refId": "A", "legendFormat": "{{consumergroup}} / {{topic}}", "instant": true }],
+      "transformations": [{ "id": "labelsToFields", "options": {} }],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 10, "type": "alertlist", "title": "Alertas activas S8",
+      "gridPos": { "x": 0, "y": 20, "w": 24, "h": 5 },
+      "options": { "alertName": "", "dashboardAlerts": false, "groupBy": [], "groupMode": "default", "maxItems": 20, "sortOrder": 1, "stateFilter": { "firing": true, "pending": true, "noData": false, "normal": false, "error": true } }
+    }
+  ]
+}

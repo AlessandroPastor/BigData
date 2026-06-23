@@ -1,0 +1,7 @@
+requests==2.34.2
+python-dotenv==1.2.2
+kafka-python-ng
+pandas
+openpyxl
+lxml
+pymysql

@@ -1,0 +1,33 @@
+groups:
+  - name: kafka_alertas
+    rules:
+
+      # Alerta si el consumer lag supera 500 mensajes
+      - alert: KafkaConsumerLagAlto
+        expr: kafka_consumergroup_lag_sum > 500
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Consumer lag alto en {{ $labels.consumergroup }}"
+          description: "El grupo {{ $labels.consumergroup }} tiene {{ $value }} mensajes de lag en el topic {{ $labels.topic }}"
+
+      # Alerta si el throughput de mensajes cae a 0 por más de 5 min
+      - alert: KafkaSinMensajes
+        expr: rate(kafka_topic_partition_current_offset[5m]) == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sin mensajes nuevos en Kafka"
+          description: "No se han publicado mensajes en el topic {{ $labels.topic }} en los últimos 5 minutos"
+
+      # Alerta si el broker Kafka no responde
+      - alert: KafkaBrokerDown
+        expr: up{job="kafka-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kafka Exporter caído"
+          description: "No se puede conectar al broker Kafka — verificar ec-kafka"

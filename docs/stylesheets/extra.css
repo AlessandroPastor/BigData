@@ -1,0 +1,40 @@
+:root {
+  --md-primary-fg-color: #3949AB;
+  --md-accent-fg-color:  #1E88E5;
+}
+
+.md-typeset .mermaid {
+  text-align: center;
+}
+
+.metric-card {
+  background: var(--md-code-bg-color);
+  border-left: 4px solid var(--md-primary-fg-color);
+  border-radius: 4px;
+  padding: 1rem 1.25rem;
+  margin: 0.5rem 0;
+}
+
+.metric-card .value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--md-primary-fg-color);
+}
+
+.metric-card .label {
+  font-size: 0.85rem;
+  color: var(--md-default-fg-color--light);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+@media (max-width: 768px) {
+  .grid-3 { grid-template-columns: 1fr; }
+}

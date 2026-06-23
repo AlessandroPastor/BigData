@@ -1,0 +1,109 @@
+site_name: CasaMarket BigData Pipeline
+site_description: Pipeline de Big Data en tiempo real para distribucion de bebidas — Unidad II
+site_author: Alexander Sandoval
+site_url: https://localhost
+
+theme:
+  name: material
+  language: es
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Modo oscuro
+    - scheme: slate
+      primary: indigo
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Modo claro
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.indexes
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+    logo: material/database-arrow-right
+
+plugins:
+  - search:
+      lang: es
+  - mermaid2:
+      arguments:
+        theme: neutral
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid_custom
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - def_list
+  - toc:
+      permalink: true
+      title: Contenido
+
+extra_css:
+  - stylesheets/extra.css
+
+nav:
+  - Inicio: index.md
+  - Arquitectura:
+    - arquitectura/index.md
+    - Pipeline de Datos: arquitectura/pipeline.md
+    - Infraestructura Docker: arquitectura/infraestructura.md
+  - Componentes:
+    - componentes/index.md
+    - Producer: componentes/producer.md
+    - Consumer Downloader: componentes/consumer-downloader.md
+    - Consumer Excel Parser: componentes/consumer-parser.md
+    - Spark Streaming: componentes/spark-streaming.md
+    - Prediccion ML: componentes/ml-prediccion.md
+  - Datos:
+    - datos/index.md
+    - Topicos Kafka: datos/kafka-topics.md
+    - PostgreSQL: datos/postgresql.md
+    - Sincronizacion MySQL: datos/mysql-sync.md
+  - Observabilidad:
+    - observabilidad/index.md
+    - Prometheus: observabilidad/prometheus.md
+    - Grafana: observabilidad/grafana.md
+    - Alertas: observabilidad/alertas.md
+  - Resultados:
+    - resultados/index.md
+    - Metricas del Sistema: resultados/metricas.md
+    - Predicciones 2026: resultados/predicciones.md
+  - Despliegue:
+    - despliegue/index.md

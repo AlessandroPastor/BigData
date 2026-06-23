@@ -1,0 +1,1391 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CasaMarket — Pipeline Big Data</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:      #f8fafc;
+  --bg2:     #ffffff;
+  --bg3:     #f1f5f9;
+  --text:    #0f172a;
+  --text2:   #64748b;
+  --border:  #e2e8f0;
+  --kafka:   #e34c26;
+  --spark:   #e25a1c;
+  --pg:      #336791;
+  --grafana: #f46800;
+  --prom:    #e6522c;
+  --ml:      #7c3aed;
+  --blue:    #2563eb;
+  --green:   #16a34a;
+  --teal:    #0891b2;
+  --accent:  #2563eb;
+  --shadow:  0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.06);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,.12);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+  font-family:'Inter',system-ui,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  height:100vh;
+  overflow:hidden;
+}
+
+/* ── SLIDES ── */
+.deck{position:relative;width:100%;height:100vh;}
+.slide{
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;
+  justify-content:center;align-items:center;
+  padding:44px 80px 80px;
+  opacity:0;pointer-events:none;
+  transform:translateX(48px);
+  transition:opacity .35s ease,transform .35s ease;
+}
+.slide.active{opacity:1;pointer-events:all;transform:translateX(0);}
+.slide.out{opacity:0;transform:translateX(-48px);}
+
+/* ── NAV ── */
+.nav{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:10px;z-index:100;
+  background:#fff;border:1px solid var(--border);
+  border-radius:40px;padding:8px 18px;
+  box-shadow:var(--shadow);
+}
+.nav button{
+  background:none;border:1px solid var(--border);
+  color:var(--text2);padding:5px 16px;border-radius:20px;
+  cursor:pointer;font-size:13px;font-family:inherit;
+  transition:all .2s;
+}
+.nav button:hover{background:var(--blue);color:#fff;border-color:var(--blue);}
+.nav .ctr{font-size:12px;color:var(--text2);min-width:54px;text-align:center;}
+.progress{
+  position:fixed;top:0;left:0;height:3px;
+  background:linear-gradient(90deg,var(--blue),var(--ml));
+  transition:width .35s;z-index:200;
+}
+.pg-lbl{
+  position:fixed;top:14px;right:24px;
+  font-size:11px;color:var(--text2);z-index:100;
+}
+
+/* ── TYPOGRAPHY ── */
+h1{font-size:clamp(1.9rem,3.5vw,3rem);font-weight:800;line-height:1.15;}
+h2{font-size:clamp(1.2rem,2vw,1.7rem);font-weight:700;color:var(--text);}
+h3{font-size:.95rem;font-weight:600;color:var(--text);}
+p{font-size:.88rem;color:var(--text2);line-height:1.7;}
+
+.slide-hdr{
+  width:100%;max-width:1140px;
+  margin-bottom:22px;
+  display:flex;align-items:center;gap:14px;
+}
+.slide-hdr .icon-wrap{
+  width:44px;height:44px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.1rem;color:#fff;flex-shrink:0;
+  background:var(--blue);
+}
+.slide-hdr h2{margin:0;}
+.slide-hdr p{font-size:.82rem;margin:2px 0 0;color:var(--text2);}
+
+/* ── CARDS ── */
+.card{
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:14px;padding:18px 20px;
+  box-shadow:var(--shadow);
+}
+.card .icon-line{
+  width:36px;height:36px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:.9rem;color:#fff;margin-bottom:12px;
+}
+.card h3{font-size:.88rem;margin-bottom:6px;}
+
+/* ── GRID ── */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;width:100%;max-width:1140px;}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;width:100%;max-width:1140px;}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;width:100%;max-width:1140px;}
+
+/* ── BADGE ── */
+.badge{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:2px 10px;border-radius:12px;
+  font-size:.72rem;font-weight:600;margin-left:6px;
+}
+.bk{background:#fef3ea;color:var(--kafka);border:1px solid #fbd4be;}
+.bs{background:#fef3ea;color:var(--spark);border:1px solid #fbd4be;}
+.bp{background:#eaf2fb;color:var(--pg);border:1px solid #bdd7f5;}
+.bg{background:#fff4ec;color:var(--grafana);border:1px solid #fdd9bc;}
+.bm{background:#f5f0ff;color:var(--ml);border:1px solid #ddd1ff;}
+.bn{background:#ecfdf5;color:var(--green);border:1px solid #bbf7d0;}
+
+/* ── CODE ── */
+.code{
+  background:#f8fafc;border:1px solid var(--border);
+  border-radius:10px;padding:14px 16px;
+  font-family:'Fira Code',monospace;font-size:.75rem;
+  color:#334155;white-space:pre;overflow-x:auto;
+  width:100%;max-width:1140px;line-height:1.7;
+}
+
+/* ── TABLE ── */
+table{border-collapse:collapse;width:100%;font-size:.83rem;}
+th{background:var(--bg3);padding:9px 14px;text-align:left;font-weight:600;color:var(--text);border-bottom:2px solid var(--border);}
+td{padding:8px 14px;border-bottom:1px solid var(--border);color:var(--text2);}
+tr:hover td{background:#f8fafc;color:var(--text);}
+
+/* ── STEPS ── */
+.steps{display:flex;flex-direction:column;gap:10px;width:100%;max-width:920px;}
+.step{display:flex;align-items:flex-start;gap:14px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;box-shadow:var(--shadow);}
+.step-n{min-width:28px;height:28px;border-radius:50%;background:var(--blue);color:#fff;font-weight:700;font-size:.8rem;display:flex;align-items:center;justify-content:center;}
+.step-b h3{font-size:.86rem;margin-bottom:3px;}
+.step-b p{font-size:.78rem;}
+
+/* ── STATS ── */
+.stats{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;}
+.stat{
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:14px;padding:18px 24px;text-align:center;
+  min-width:140px;box-shadow:var(--shadow);
+}
+.stat .num{font-size:2rem;font-weight:800;color:var(--blue);}
+.stat .lbl{font-size:.75rem;color:var(--text2);margin-top:3px;}
+
+/* ── PORT CARD ── */
+.pc{
+  display:flex;align-items:center;gap:12px;
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:10px;padding:12px 16px;box-shadow:var(--shadow);
+}
+.pc .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.pc .sn{font-weight:600;font-size:.86rem;}
+.pc .url{font-size:.75rem;color:var(--blue);font-family:'Fira Code',monospace;}
+.pc .cr{font-size:.72rem;color:var(--text2);}
+
+/* ── SCROLL ── */
+.sc{overflow-y:auto;width:100%;max-height:calc(100vh - 130px);display:flex;flex-direction:column;align-items:center;gap:14px;padding-bottom:20px;}
+.sc::-webkit-scrollbar{width:4px;}
+.sc::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+
+/* ── TITLE SLIDE ── */
+#s1{background:linear-gradient(135deg,#eff6ff 0%,#f0fdf4 50%,#faf5ff 100%);}
+
+/* ── ARCH SVG slide ── */
+#s3{padding:30px 60px 80px;}
+
+/* ── ANIMATION ── */
+@keyframes fu{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.fu{animation:fu .45s ease both;}
+.stag>*:nth-child(1){animation-delay:.04s}
+.stag>*:nth-child(2){animation-delay:.09s}
+.stag>*:nth-child(3){animation-delay:.14s}
+.stag>*:nth-child(4){animation-delay:.19s}
+.stag>*:nth-child(5){animation-delay:.24s}
+.stag>*:nth-child(6){animation-delay:.29s}
+.stag>*:nth-child(7){animation-delay:.34s}
+.stag>*:nth-child(8){animation-delay:.39s}
+.stag>*:nth-child(9){animation-delay:.44s}
+</style>
+</head>
+<body>
+
+<div class="progress" id="prog"></div>
+<div class="pg-lbl" id="pglbl"></div>
+<div class="deck" id="deck">
+
+<!-- ═══════════════ S1 PORTADA ═══════════════ -->
+<div class="slide active" id="s1">
+  <div style="width:100%;max-width:1100px;display:flex;flex-direction:column;align-items:center;gap:0">
+
+    <!-- TOP BRAND -->
+    <div style="display:flex;align-items:center;gap:20px;margin-bottom:12px">
+      <!-- Logo Ifersan -->
+      <div style="width:80px;height:80px;border-radius:22px;background:linear-gradient(135deg,#1d4ed8,#7c3aed);box-shadow:0 10px 32px rgba(29,78,216,.35);display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative">
+        <i class="fa-solid fa-truck-ramp-box" style="font-size:2rem;color:#fff"></i>
+      </div>
+      <div style="text-align:left">
+        <!-- Nombre empresa grande -->
+        <div style="font-size:3.4rem;font-weight:900;line-height:1;letter-spacing:-2px;background:linear-gradient(135deg,#1d4ed8,#7c3aed);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">IFERSAN</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+          <span style="font-size:.82rem;color:var(--text2);font-weight:500;letter-spacing:.4px">Distribuidora de Bebidas · Juliaca, Perú</span>
+          <span style="background:#eff6ff;color:var(--blue);border:1px solid #bfdbfe;border-radius:8px;padding:1px 8px;font-size:.7rem;font-weight:600">ERP: admin.casamarket.la</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN TITLE -->
+    <div style="text-align:center;margin-bottom:16px">
+      <!-- Línea 1: llamativa -->
+      <div style="font-size:clamp(1.6rem,3.2vw,2.6rem);font-weight:900;line-height:1.15;letter-spacing:-1px">
+        Cada venta<span style="color:#cbd5e1">.</span>
+        <span style="background:linear-gradient(90deg,#2563eb,#7c3aed);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text"> Visible al instante.</span>
+      </div>
+      <!-- Línea 2: qué hace -->
+      <div style="font-size:1rem;color:var(--text2);margin-top:8px;font-weight:500">
+        Del Excel del ERP al dashboard en <strong style="color:var(--green)">&lt; 30 segundos</strong> — con predicciones ML para 2026
+      </div>
+      <!-- Línea 3: stack -->
+      <div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:10px;flex-wrap:wrap">
+        <span style="background:#fef3ea;color:var(--kafka);border:1px solid #fbd4be;border-radius:8px;padding:2px 10px;font-size:.75rem;font-weight:600"><i class="fa-solid fa-envelopes-bulk" style="margin-right:4px"></i>Kafka</span>
+        <i class="fa-solid fa-arrow-right" style="color:#cbd5e1;font-size:.7rem"></i>
+        <span style="background:#fff7ed;color:var(--spark);border:1px solid #fed7aa;border-radius:8px;padding:2px 10px;font-size:.75rem;font-weight:600"><i class="fa-solid fa-bolt" style="margin-right:4px"></i>Spark Streaming</span>
+        <i class="fa-solid fa-arrow-right" style="color:#cbd5e1;font-size:.7rem"></i>
+        <span style="background:#eaf2fb;color:var(--pg);border:1px solid #bdd7f5;border-radius:8px;padding:2px 10px;font-size:.75rem;font-weight:600"><i class="fa-solid fa-database" style="margin-right:4px"></i>PostgreSQL</span>
+        <i class="fa-solid fa-arrow-right" style="color:#cbd5e1;font-size:.7rem"></i>
+        <span style="background:#faf5ff;color:var(--ml);border:1px solid #ddd6fe;border-radius:8px;padding:2px 10px;font-size:.75rem;font-weight:600"><i class="fa-solid fa-brain" style="margin-right:4px"></i>Machine Learning</span>
+        <i class="fa-solid fa-arrow-right" style="color:#cbd5e1;font-size:.7rem"></i>
+        <span style="background:#fff4ec;color:var(--grafana);border:1px solid #fdd9bc;border-radius:8px;padding:2px 10px;font-size:.75rem;font-weight:600"><i class="fa-solid fa-chart-area" style="margin-right:4px"></i>Grafana</span>
+      </div>
+    </div>
+
+    <!-- MINI PIPELINE VISUAL -->
+    <div style="display:flex;align-items:center;gap:0;background:#fff;border:1px solid var(--border);border-radius:16px;padding:16px 24px;box-shadow:var(--shadow);margin-bottom:18px;flex-wrap:wrap;justify-content:center;gap:4px">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 14px">
+        <div style="width:40px;height:40px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;display:flex;align-items:center;justify-content:center">
+          <i class="fa-solid fa-globe" style="color:#2563eb;font-size:1.1rem"></i>
+        </div>
+        <span style="font-size:.72rem;font-weight:600;color:var(--text2)">ERP Web</span>
+      </div>
+      <i class="fa-solid fa-arrow-right" style="color:#cbd5e1;font-size:.9rem;margin:0 2px"></i>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 14px">
+        <div style="width:40px;height:40px;border-radius:10px;background:#fff7ed;border:1px solid #fed7aa;display:flex;align-items:center;justify-content:center">
+          <i class="fa-solid fa-file-excel" style="color:#ea580c;font-size:1.1rem"></i>
+        </div>
+        <span style="font-size:.72rem;font-weight:600;color:var(--text2)">Excel Parser</span>
+      </div>
+      <i class="fa-solid fa-arrow-right" style="color:#cbd5e1;font-size:.9rem;margin:0 2px"></i>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 14px">
+        <div style="width:40px;height:40px;border-radius:10px;background:#fef3ea;border:1px solid #fbd4be;display:flex;align-items:center;justify-content:center">
+          <i class="fa-solid fa-envelopes-bulk" style="color:#e34c26;font-size:1.1rem"></i>
+        </div>
+        <span style="font-size:.72rem;font-weight:600;color:var(--text2)">Kafka</span>
+      </div>
+      <i class="fa-solid fa-arrow-right" style="color:#cbd5e1;font-size:.9rem;margin:0 2px"></i>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 14px">
+        <div style="width:40px;height:40px;border-radius:10px;background:#fff7ed;border:1px solid #fed7aa;display:flex;align-items:center;justify-content:center">
+          <i class="fa-solid fa-bolt" style="color:#e25a1c;font-size:1.1rem"></i>
+        </div>
+        <span style="font-size:.72rem;font-weight:600;color:var(--text2)">Spark</span>
+      </div>
+      <i class="fa-solid fa-arrow-right" style="color:#cbd5e1;font-size:.9rem;margin:0 2px"></i>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 14px">
+        <div style="width:40px;height:40px;border-radius:10px;background:#eaf2fb;border:1px solid #bdd7f5;display:flex;align-items:center;justify-content:center">
+          <i class="fa-solid fa-database" style="color:#336791;font-size:1.1rem"></i>
+        </div>
+        <span style="font-size:.72rem;font-weight:600;color:var(--text2)">PostgreSQL</span>
+      </div>
+      <i class="fa-solid fa-arrow-right" style="color:#cbd5e1;font-size:.9rem;margin:0 2px"></i>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 14px">
+        <div style="width:40px;height:40px;border-radius:10px;background:#faf5ff;border:1px solid #ddd6fe;display:flex;align-items:center;justify-content:center">
+          <i class="fa-solid fa-brain" style="color:#7c3aed;font-size:1.1rem"></i>
+        </div>
+        <span style="font-size:.72rem;font-weight:600;color:var(--text2)">ML 2026</span>
+      </div>
+      <i class="fa-solid fa-arrow-right" style="color:#cbd5e1;font-size:.9rem;margin:0 2px"></i>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 14px">
+        <div style="width:40px;height:40px;border-radius:10px;background:#fff4ec;border:1px solid #fdd9bc;display:flex;align-items:center;justify-content:center">
+          <i class="fa-solid fa-chart-area" style="color:#f46800;font-size:1.1rem"></i>
+        </div>
+        <span style="font-size:.72rem;font-weight:600;color:var(--text2)">Grafana</span>
+      </div>
+    </div>
+
+    <!-- STATS ROW -->
+    <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-bottom:16px" class="fu stag">
+      <div class="stat" style="padding:14px 20px;min-width:120px"><div class="num">11</div><div class="lbl"><i class="fa-brands fa-docker" style="color:var(--teal);margin-right:3px"></i>Servicios</div></div>
+      <div class="stat" style="padding:14px 20px;min-width:120px"><div class="num" style="color:var(--kafka)">30,372</div><div class="lbl"><i class="fa-solid fa-envelope" style="margin-right:3px"></i>Mensajes Kafka</div></div>
+      <div class="stat" style="padding:14px 20px;min-width:120px"><div class="num" style="color:var(--green)">S/ 406K</div><div class="lbl"><i class="fa-solid fa-sack-dollar" style="margin-right:3px"></i>Ingresos reales</div></div>
+      <div class="stat" style="padding:14px 20px;min-width:120px"><div class="num" style="color:var(--ml)">S/ 1.6M</div><div class="lbl"><i class="fa-solid fa-brain" style="margin-right:3px"></i>Proyección 2026</div></div>
+    </div>
+
+    <!-- FOOTER TAGS -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+      <span style="background:#eff6ff;color:var(--blue);border:1px solid #bfdbfe;border-radius:20px;padding:4px 14px;font-size:.78rem;font-weight:500"><i class="fa-solid fa-university" style="margin-right:5px"></i>Universidad Peruana Unión</span>
+      <span style="background:#f0fdf4;color:var(--green);border:1px solid #bbf7d0;border-radius:20px;padding:4px 14px;font-size:.78rem;font-weight:500"><i class="fa-solid fa-graduation-cap" style="margin-right:5px"></i>IX Ciclo · Big Data · Unidad II</span>
+      <span style="background:#faf5ff;color:var(--ml);border:1px solid #ddd6fe;border-radius:20px;padding:4px 14px;font-size:.78rem;font-weight:500"><i class="fa-solid fa-chalkboard-user" style="margin-right:5px"></i>Docente: Mg. Angel Sullon</span>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════ S2 CONTEXTO ═══════════════ -->
+<div class="slide" id="s2">
+  <div class="slide-hdr">
+    <div class="icon-wrap" style="background:var(--teal)"><i class="fa-solid fa-building"></i></div>
+    <div><h2>Contexto del Proyecto</h2><p>Distribuidora peruana de bebidas — datos reales del ERP web admin.casamarket.la</p></div>
+  </div>
+  <div class="g2 fu stag">
+    <div style="display:flex;flex-direction:column;gap:13px">
+      <div class="card">
+        <div class="icon-line" style="background:var(--teal)"><i class="fa-solid fa-store"></i></div>
+        <h3>La Empresa</h3>
+        <p>CasaMarket distribuye bebidas en Perú: Pepsi, Escocesa, Pilsen Callao. Más de <strong>1,106 clientes</strong>, <strong>62 productos</strong> y <strong>6 vendedores</strong> activos.</p>
+      </div>
+      <div class="card">
+        <div class="icon-line" style="background:var(--blue)"><i class="fa-solid fa-file-excel"></i></div>
+        <h3>Fuente de datos</h3>
+        <p>El ERP <strong style="color:var(--blue)">admin.casamarket.la</strong> genera reportes .xlsx de ventas diarias. Se descargan automáticamente vía API REST con autenticación JWT.</p>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:13px">
+      <div class="card">
+        <div class="icon-line" style="background:#ef4444"><i class="fa-solid fa-triangle-exclamation"></i></div>
+        <h3>El Problema</h3>
+        <ul style="margin-top:8px;color:var(--text2);font-size:.83rem;padding-left:18px;line-height:2.1">
+          <li>Sin visibilidad en tiempo real de ventas</li>
+          <li>Sin alertas ante anomalías del sistema</li>
+          <li>Sin proyecciones futuras de demanda</li>
+          <li>Historial disperso en Excel manuales</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="icon-line" style="background:var(--green)"><i class="fa-solid fa-circle-check"></i></div>
+        <h3>La Solución</h3>
+        <p>Pipeline Kappa de streaming que procesa cada venta en <strong>&lt; 30 segundos</strong> y la visualiza en dashboards en vivo con predicciones ML para todo 2026.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ S3 ARQUITECTURA (IMAGEN) ═══════════════ -->
+<div class="slide" id="s3">
+  <div class="slide-hdr">
+    <div class="icon-wrap" style="background:var(--ml)"><i class="fa-solid fa-diagram-project"></i></div>
+    <div><h2>Arquitectura del Pipeline — Kappa</h2><p>Flujo completo desde el ERP de Ifersan hasta Grafana · Pipeline de streaming en tiempo real</p></div>
+  </div>
+  <div style="width:100%;max-width:1140px;background:#fff;border:1px solid var(--border);border-radius:16px;padding:12px;box-shadow:var(--shadow-lg);display:flex;align-items:center;justify-content:center">
+    <img src="../material/Diagrama.png" alt="Arquitectura del Pipeline Big Data — Ifersan" style="width:100%;height:auto;border-radius:10px;display:block;max-height:calc(100vh - 200px);object-fit:contain"/>
+  </div>
+  <!-- SVG legacy (oculto) -->
+  <div style="display:none">
+  <div>
+    <svg viewBox="0 0 1100 390" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">
+      <defs>
+        <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#94a3b8"/>
+        </marker>
+        <marker id="arr-blue" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#2563eb"/>
+        </marker>
+        <marker id="arr-green" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#16a34a"/>
+        </marker>
+        <marker id="arr-orange" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#f46800"/>
+        </marker>
+        <filter id="sh"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0000001a"/></filter>
+      </defs>
+
+      <!-- FILA 1: ERP -->
+      <!-- ERP box -->
+      <rect x="20" y="30" width="140" height="70" rx="12" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5" filter="url(#sh)"/>
+      <text x="90" y="56" text-anchor="middle" font-family="Inter,sans-serif" font-weight="700" font-size="12" fill="#1e40af">ERP Web</text>
+      <text x="90" y="72" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="#3b82f6">admin.casamarket.la</text>
+      <text x="90" y="88" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="#60a5fa">Reportes .xlsx / .html</text>
+
+      <!-- Arrow ERP → Producer -->
+      <line x1="162" y1="65" x2="208" y2="65" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+      <text x="185" y="58" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#94a3b8">JWT API</text>
+
+      <!-- Producer -->
+      <rect x="210" y="30" width="130" height="70" rx="12" fill="#fff7ed" stroke="#fed7aa" stroke-width="1.5" filter="url(#sh)"/>
+      <text x="275" y="56" text-anchor="middle" font-family="Inter,sans-serif" font-weight="700" font-size="12" fill="#c2410c">Producer</text>
+      <text x="275" y="72" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="#ea580c">producer.py</text>
+      <text x="275" y="87" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#fb923c">Detecta documentos</text>
+
+      <!-- Arrow Producer → Kafka (documento) -->
+      <line x1="342" y1="65" x2="415" y2="65" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arr)"/>
+      <text x="380" y="58" text-anchor="middle" font-family="Inter,sans-serif" font-size="8.5" fill="#94a3b8">documento.detectado</text>
+
+      <!-- Excel Parser -->
+      <rect x="210" y="130" width="130" height="70" rx="12" fill="#fff7ed" stroke="#fed7aa" stroke-width="1.5" filter="url(#sh)"/>
+      <text x="275" y="153" text-anchor="middle" font-family="Inter,sans-serif" font-weight="700" font-size="11" fill="#c2410c">Excel Parser</text>
+      <text x="275" y="168" text-anchor="middle" font-family="Inter,sans-serif" font-size="9.5" fill="#ea580c">consumer_excel_parser.py</text>
+      <text x="275" y="184" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#fb923c">Lee filas → JSON</text>
+
+      <!-- ERP → Excel arrow (vertical) -->
+      <line x1="90" y1="102" x2="90" y2="155" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="3,2"/>
+      <line x1="90" y1="155" x2="208" y2="165" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arr)"/>
+
+      <!-- Arrow Excel Parser → Kafka (ventas.raw) -->
+      <line x1="342" y1="165" x2="415" y2="120" stroke="#2563eb" stroke-width="1.8" marker-end="url(#arr-blue)"/>
+      <text x="385" y="152" text-anchor="middle" font-family="Inter,sans-serif" font-size="8.5" fill="#2563eb">ventas.raw</text>
+
+      <!-- ══ KAFKA ══ -->
+      <rect x="417" y="30" width="160" height="200" rx="14" fill="#fef3ea" stroke="#fbd4be" stroke-width="2" filter="url(#sh)"/>
+      <text x="497" y="56" text-anchor="middle" font-family="Inter,sans-serif" font-weight="800" font-size="13" fill="#e34c26">Apache Kafka</text>
+      <text x="497" y="71" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#c2410c">v3.7 · KRaft (sin ZooKeeper)</text>
+      <!-- topic 1 -->
+      <rect x="433" y="82" width="128" height="44" rx="8" fill="#fff" stroke="#fbd4be" stroke-width="1"/>
+      <text x="497" y="100" text-anchor="middle" font-family="Inter,sans-serif" font-weight="600" font-size="9.5" fill="#e34c26">ventas.raw</text>
+      <text x="497" y="116" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#64748b">30,372 mensajes</text>
+      <!-- topic 2 -->
+      <rect x="433" y="135" width="128" height="44" rx="8" fill="#fff" stroke="#fbd4be" stroke-width="1"/>
+      <text x="497" y="152" text-anchor="middle" font-family="Inter,sans-serif" font-weight="600" font-size="9" fill="#e34c26">documento.detectado</text>
+      <text x="497" y="167" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#64748b">173 mensajes</text>
+      <!-- broker info -->
+      <text x="497" y="205" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#94a3b8">LAG = 0 · 1 partición</text>
+      <text x="497" y="220" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#94a3b8">Puerto: 19092</text>
+
+      <!-- ══ SPARK ══ -->
+      <!-- Arrow Kafka → Spark ventas -->
+      <line x1="579" y1="100" x2="628" y2="100" stroke="#2563eb" stroke-width="1.8" marker-end="url(#arr-blue)"/>
+      <!-- Arrow Kafka → Spark docs -->
+      <line x1="579" y1="157" x2="628" y2="230" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- Spark Ventas box -->
+      <rect x="630" y="30" width="155" height="130" rx="12" fill="#fff7ed" stroke="#fed7aa" stroke-width="1.5" filter="url(#sh)"/>
+      <text x="707" y="55" text-anchor="middle" font-family="Inter,sans-serif" font-weight="700" font-size="11.5" fill="#c2410c">Spark — job_ventas</text>
+      <text x="707" y="70" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#64748b">Micro-batch cada 30s</text>
+      <rect x="644" y="78" width="127" height="22" rx="5" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
+      <text x="707" y="93" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#1e40af">→ PostgreSQL (JDBC)</text>
+      <rect x="644" y="106" width="127" height="22" rx="5" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
+      <text x="707" y="121" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#15803d">→ Parquet (ventas/)</text>
+      <rect x="644" y="133" width="127" height="20" rx="5" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+      <text x="707" y="147" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#64748b">→ Consola (top 15)</text>
+
+      <!-- Spark Docs box -->
+      <rect x="630" y="195" width="155" height="120" rx="12" fill="#fff7ed" stroke="#fed7aa" stroke-width="1.5" filter="url(#sh)"/>
+      <text x="707" y="218" text-anchor="middle" font-family="Inter,sans-serif" font-weight="700" font-size="10.5" fill="#c2410c">Spark — job_documentos</text>
+      <text x="707" y="232" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#64748b">Watermark 10min · Ventana 5min</text>
+      <rect x="644" y="240" width="127" height="20" rx="5" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
+      <text x="707" y="254" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#15803d">→ Parquet (documentos/)</text>
+      <rect x="644" y="264" width="127" height="20" rx="5" fill="#faf5ff" stroke="#ddd6fe" stroke-width="1"/>
+      <text x="707" y="278" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#7c3aed">→ Parquet (metricas/)</text>
+      <rect x="644" y="288" width="127" height="20" rx="5" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+      <text x="707" y="302" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#64748b">→ Ventanas 5min</text>
+
+      <!-- ══ PostgreSQL ══ -->
+      <!-- Arrow Spark Ventas → PG -->
+      <line x1="787" y1="90" x2="840" y2="90" stroke="#2563eb" stroke-width="1.8" marker-end="url(#arr-blue)"/>
+
+      <rect x="842" y="30" width="140" height="160" rx="12" fill="#eaf2fb" stroke="#bdd7f5" stroke-width="1.5" filter="url(#sh)"/>
+      <text x="912" y="55" text-anchor="middle" font-family="Inter,sans-serif" font-weight="700" font-size="12" fill="#1e40af">PostgreSQL 16</text>
+      <rect x="856" y="64" width="112" height="36" rx="7" fill="#fff" stroke="#bdd7f5" stroke-width="1"/>
+      <text x="912" y="79" text-anchor="middle" font-family="Inter,sans-serif" font-weight="600" font-size="9.5" fill="#336791">ventas</text>
+      <text x="912" y="93" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#64748b">16,794 filas · S/ 406K</text>
+      <rect x="856" y="106" width="112" height="36" rx="7" fill="#fff" stroke="#bdd7f5" stroke-width="1"/>
+      <text x="912" y="121" text-anchor="middle" font-family="Inter,sans-serif" font-weight="600" font-size="9" fill="#7c3aed">predicciones_2026</text>
+      <text x="912" y="136" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#64748b">180 filas ML</text>
+      <text x="912" y="162" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#94a3b8">Puerto: 15432</text>
+      <text x="912" y="178" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#94a3b8">casamarket / casamarket</text>
+
+      <!-- ML box -->
+      <rect x="842" y="210" width="140" height="70" rx="12" fill="#faf5ff" stroke="#ddd6fe" stroke-width="1.5" filter="url(#sh)"/>
+      <text x="912" y="234" text-anchor="middle" font-family="Inter,sans-serif" font-weight="700" font-size="11" fill="#7c3aed">ML — sklearn</text>
+      <text x="912" y="249" text-anchor="middle" font-family="Inter,sans-serif" font-size="9.5" fill="#9333ea">prediccion_ventas.py</text>
+      <text x="912" y="263" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#64748b">LinearRegression · 15 productos</text>
+      <text x="912" y="276" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#64748b">S/ 1,614,943 proyectados</text>
+
+      <!-- Arrow PG → ML -->
+      <line x1="912" y1="192" x2="912" y2="208" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- ══ GRAFANA ══ -->
+      <!-- Arrow PG → Grafana -->
+      <line x1="984" y1="90" x2="1040" y2="90" stroke="#f46800" stroke-width="1.8" marker-end="url(#arr-orange)"/>
+
+      <rect x="1042" y="30" width="46" height="200" rx="12" fill="#fff4ec" stroke="#fdd9bc" stroke-width="1.5" filter="url(#sh)"/>
+      <text x="1065" y="130" text-anchor="middle" font-family="Inter,sans-serif" font-weight="700" font-size="11" fill="#f46800" transform="rotate(-90,1065,130)">Grafana</text>
+
+      <!-- ══ PROMETHEUS row ══ -->
+      <!-- Kafka Exporter -->
+      <rect x="417" y="295" width="155" height="55" rx="10" fill="#fff1ee" stroke="#fecaca" stroke-width="1.5" filter="url(#sh)"/>
+      <text x="495" y="318" text-anchor="middle" font-family="Inter,sans-serif" font-weight="600" font-size="11" fill="#e6522c">Kafka Exporter</text>
+      <text x="495" y="334" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#64748b">:9308/metrics · scraping 15s</text>
+
+      <!-- Arrow Kafka → Exporter -->
+      <line x1="497" y1="232" x2="497" y2="293" stroke="#e6522c" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- Arrow Exporter → Prometheus -->
+      <line x1="574" y1="322" x2="630" y2="322" stroke="#e6522c" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- Prometheus -->
+      <rect x="632" y="295" width="140" height="55" rx="10" fill="#fff1ee" stroke="#fecaca" stroke-width="1.5" filter="url(#sh)"/>
+      <text x="702" y="318" text-anchor="middle" font-family="Inter,sans-serif" font-weight="600" font-size="11" fill="#e6522c">Prometheus</text>
+      <text x="702" y="334" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#64748b">TSDB · :9090 · PromQL</text>
+
+      <!-- Arrow Prometheus → Grafana (bottom) -->
+      <path d="M772,322 Q900,322 1065,232" stroke="#f46800" stroke-width="1.5" fill="none" stroke-dasharray="5,3" marker-end="url(#arr-orange)"/>
+      <text x="860" y="360" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" fill="#94a3b8">métricas infra</text>
+
+      <!-- ── LABELS ── -->
+      <text x="90" y="16" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" font-weight="600" fill="#94a3b8">FUENTE</text>
+      <text x="275" y="16" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" font-weight="600" fill="#94a3b8">INGESTA</text>
+      <text x="497" y="16" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" font-weight="600" fill="#94a3b8">BROKER</text>
+      <text x="707" y="16" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" font-weight="600" fill="#94a3b8">PROCESAMIENTO</text>
+      <text x="912" y="16" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" font-weight="600" fill="#94a3b8">ALMACENAMIENTO &amp; ML</text>
+      <text x="1065" y="16" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" font-weight="600" fill="#94a3b8">VIZUALIZACIÓN</text>
+    </svg>
+  </div>
+  </div>
+</div>
+
+<!-- ═══════════════ S4 TECH STACK ═══════════════ -->
+<div class="slide" id="s4">
+  <div class="slide-hdr">
+    <div class="icon-wrap" style="background:var(--green)"><i class="fa-solid fa-layer-group"></i></div>
+    <div><h2>Stack Tecnológico</h2><p>10 servicios corriendo en Docker Compose — red interna ec-kafka-dev-net</p></div>
+  </div>
+  <div class="g3 fu stag" style="max-width:1140px;width:100%">
+    <div class="card">
+      <div class="icon-line" style="background:var(--kafka)"><i class="fa-solid fa-envelopes-bulk"></i></div>
+      <h3>Apache Kafka 3.7 <span class="badge bk">KRaft</span></h3>
+      <p>Message broker sin ZooKeeper. 2 topics con 30,372 mensajes. Protocolo de consenso Raft propio.</p>
+    </div>
+    <div class="card">
+      <div class="icon-line" style="background:var(--spark)"><i class="fa-solid fa-bolt"></i></div>
+      <h3>Apache Spark 3.5 <span class="badge bs">Streaming</span></h3>
+      <p>Structured Streaming, micro-batch cada 30s. Watermark 10 min, ventanas 5 min, foreachBatch.</p>
+    </div>
+    <div class="card">
+      <div class="icon-line" style="background:var(--pg)"><i class="fa-solid fa-database"></i></div>
+      <h3>PostgreSQL 16 <span class="badge bp">OLAP</span></h3>
+      <p>Tablas ventas (16k filas) y predicciones_2026 (180 filas). Consultas SQL para Grafana y ML.</p>
+    </div>
+    <div class="card">
+      <div class="icon-line" style="background:var(--grafana)"><i class="fa-solid fa-chart-area"></i></div>
+      <h3>Grafana <span class="badge bg">Dashboards</span></h3>
+      <p>2 dashboards, 29 paneles totales, 2 alertas automáticas. Datasources: Prometheus + PostgreSQL.</p>
+    </div>
+    <div class="card">
+      <div class="icon-line" style="background:var(--prom)"><i class="fa-solid fa-gauge-high"></i></div>
+      <h3>Prometheus <span class="badge" style="background:#fff1ee;color:var(--prom);border:1px solid #fecaca">Métricas</span></h3>
+      <p>Scraping de Kafka cada 15s vía kafka-exporter. Consumer lag, offset, throughput, broker status.</p>
+    </div>
+    <div class="card">
+      <div class="icon-line" style="background:var(--ml)"><i class="fa-solid fa-brain"></i></div>
+      <h3>Scikit-learn <span class="badge bm">ML</span></h3>
+      <p>LinearRegression por producto. Proyecta S/ 1,614,943 en ventas 2026. 180 predicciones mensuales.</p>
+    </div>
+    <div class="card">
+      <div class="icon-line" style="background:#3776ab"><i class="fa-brands fa-python"></i></div>
+      <h3>Python 3.12 <span class="badge bn">Producer/Consumer</span></h3>
+      <p>kafka-python-ng, pandas, openpyxl, requests, SQLAlchemy. 3 servicios Python independientes.</p>
+    </div>
+    <div class="card">
+      <div class="icon-line" style="background:var(--green)"><i class="fa-solid fa-file-arrow-down"></i></div>
+      <h3>Apache Parquet <span class="badge bn">Storage</span></h3>
+      <p>Formato columnar para análisis. 4 carpetas: ventas/, documentos/, por_extension/, metricas/.</p>
+    </div>
+    <div class="card">
+      <div class="icon-line" style="background:var(--teal)"><i class="fa-brands fa-docker"></i></div>
+      <h3>Docker Compose <span class="badge" style="background:#e0f7fa;color:var(--teal);border:1px solid #b2ebf2">Infra</span></h3>
+      <p>11 servicios orquestados. Volúmenes persistentes para Kafka, PostgreSQL, Grafana y Prometheus.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ S5 KAFKA ═══════════════ -->
+<div class="slide" id="s5">
+  <div class="slide-hdr">
+    <div class="icon-wrap" style="background:var(--kafka)"><i class="fa-solid fa-envelopes-bulk"></i></div>
+    <div><h2>Apache Kafka — El Corazón del Pipeline</h2><p>Message broker distribuido que desacopla productores de consumidores</p></div>
+  </div>
+  <div class="g2 fu stag">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div class="icon-line" style="background:var(--kafka);margin-bottom:0"><i class="fa-solid fa-comments"></i></div>
+          <h3>¿Qué es Kafka?</h3>
+        </div>
+        <p>Cola de mensajes distribuida y persistente. Los productores publican mensajes sin saber quién consume. Los mensajes <strong>sobreviven</strong> reinicios — el log es la fuente de verdad.</p>
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div class="icon-line" style="background:var(--blue);margin-bottom:0"><i class="fa-solid fa-gears"></i></div>
+          <h3>KRaft — Sin ZooKeeper</h3>
+        </div>
+        <p>Kafka 3.7 usa su propio protocolo Raft para consenso del clúster. Elimina la dependencia de ZooKeeper → menor latencia y menos componentes.</p>
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <div class="icon-line" style="background:var(--green);margin-bottom:0"><i class="fa-solid fa-chart-simple"></i></div>
+          <h3>Estado actual</h3>
+        </div>
+        <table style="font-size:.8rem">
+          <tr><th>Topic</th><th>Mensajes</th><th>LAG</th></tr>
+          <tr><td style="color:var(--kafka)">casamarket.ventas.raw</td><td><strong>30,372</strong></td><td style="color:var(--green)">0</td></tr>
+          <tr><td style="color:var(--kafka)">casamarket.documento.detectado</td><td><strong>173</strong></td><td style="color:var(--green)">0</td></tr>
+        </table>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div class="icon-line" style="background:var(--teal);margin-bottom:0"><i class="fa-solid fa-code"></i></div>
+          <h3>Mensaje real en ventas.raw</h3>
+        </div>
+        <div class="code">{
+  "fecha": "2026-05-15",
+  "producto": "PEPSI 2000ML",
+  "marca": "PEPSI",
+  "categoria": "BEBIDAS",
+  "cantidad": "24",
+  "total": "288.00",
+  "cliente": "BOTICA SAN PABLO",
+  "vendedor": "ROSA CUSILAYME",
+  "zona": "LIMA NORTE"
+}</div>
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div class="icon-line" style="background:var(--ml);margin-bottom:0"><i class="fa-solid fa-arrows-split-up-and-left"></i></div>
+          <h3>Quién escucha qué topic</h3>
+        </div>
+        <table style="font-size:.8rem">
+          <tr><th>Servicio</th><th>Topic consumido</th></tr>
+          <tr><td>consumer-downloader</td><td style="color:var(--kafka)">documento.detectado</td></tr>
+          <tr><td>Spark job_ventas</td><td style="color:var(--kafka)">ventas.raw</td></tr>
+          <tr><td>Spark job_documentos</td><td style="color:var(--kafka)">documento.detectado</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ S6 SPARK ═══════════════ -->
+<div class="slide" id="s6">
+  <div class="slide-hdr">
+    <div class="icon-wrap" style="background:var(--spark)"><i class="fa-solid fa-bolt"></i></div>
+    <div><h2>Spark Structured Streaming — Procesamiento</h2><p>Transforma y enriquece datos en micro-batches cada 30 segundos</p></div>
+  </div>
+  <div class="g2 fu stag">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div class="icon-line" style="background:var(--spark);margin-bottom:0"><i class="fa-solid fa-fire"></i></div>
+          <h3>job_ventas.py — 3 queries paralelas</h3>
+        </div>
+        <table style="font-size:.8rem">
+          <tr><th>Query</th><th>Destino</th><th>Modo</th></tr>
+          <tr><td>Q1</td><td style="color:var(--green)"><i class="fa-solid fa-file" style="margin-right:4px"></i>Parquet ventas/</td><td>append</td></tr>
+          <tr><td>Q2</td><td style="color:var(--blue)"><i class="fa-solid fa-database" style="margin-right:4px"></i>PostgreSQL</td><td>foreachBatch</td></tr>
+          <tr><td>Q3</td><td style="color:var(--text2)"><i class="fa-solid fa-terminal" style="margin-right:4px"></i>Consola top 15</td><td>complete</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div class="icon-line" style="background:var(--prom);margin-bottom:0"><i class="fa-solid fa-file-lines"></i></div>
+          <h3>job_documentos.py — 4 queries paralelas</h3>
+        </div>
+        <table style="font-size:.8rem">
+          <tr><th>Query</th><th>Destino</th></tr>
+          <tr><td>Q1</td><td style="color:var(--green)">Parquet documentos/</td></tr>
+          <tr><td>Q2</td><td style="color:var(--text2)">Consola por extensión</td></tr>
+          <tr><td>Q3</td><td style="color:var(--green)">Parquet ventanas 5min</td></tr>
+          <tr><td>Q4</td><td style="color:var(--ml)">Parquet métricas latencia</td></tr>
+        </table>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div class="icon-line" style="background:var(--blue);margin-bottom:0"><i class="fa-solid fa-sliders"></i></div>
+          <h3>Parámetros clave y por qué</h3>
+        </div>
+        <table style="font-size:.8rem">
+          <tr><th>Parámetro</th><th>Valor</th><th>Razón</th></tr>
+          <tr><td>Trigger</td><td style="color:var(--green);font-weight:600">30 seg</td><td>Baja latencia sin sobrecargar</td></tr>
+          <tr><td>Watermark</td><td style="color:var(--green);font-weight:600">10 min</td><td>Tolera mensajes tardíos</td></tr>
+          <tr><td>Ventana</td><td style="color:var(--green);font-weight:600">5 min</td><td>Agrupación temporal</td></tr>
+          <tr><td>Particiones</td><td style="color:var(--green);font-weight:600">2</td><td>Local mode eficiente</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <div class="icon-line" style="background:var(--green);margin-bottom:0"><i class="fa-solid fa-shield-halved"></i></div>
+          <h3>Checkpoint — At-least-once</h3>
+        </div>
+        <p>Spark guarda el offset de Kafka en disco (checkpoints). Si el job cae y se reinicia, retoma desde el último offset procesado sin perder ni duplicar datos en Parquet/PostgreSQL.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ S7 POSTGRESQL ═══════════════ -->
+<div class="slide" id="s7">
+  <div class="slide-hdr">
+    <div class="icon-wrap" style="background:var(--pg)"><i class="fa-solid fa-database"></i></div>
+    <div><h2>PostgreSQL — Almacenamiento y Consultas</h2><p>Alimenta Grafana en tiempo real y el modelo de Machine Learning</p></div>
+  </div>
+  <div class="g2 fu stag">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card">
+        <h3 style="margin-bottom:10px"><i class="fa-solid fa-table" style="color:var(--pg);margin-right:6px"></i>Tabla: <code style="color:var(--green)">ventas</code></h3>
+        <div class="code" style="font-size:.72rem">CREATE TABLE ventas (
+  id           SERIAL PRIMARY KEY,
+  fecha        DATE,
+  producto     TEXT,
+  marca        TEXT,
+  categoria    TEXT,
+  cantidad     NUMERIC,
+  precio_unitario NUMERIC,
+  total        NUMERIC,
+  cliente      TEXT,
+  vendedor     TEXT,
+  procesado_ts TIMESTAMPTZ
+);</div>
+      </div>
+      <div class="card">
+        <h3 style="margin-bottom:10px"><i class="fa-solid fa-robot" style="color:var(--ml);margin-right:6px"></i>Tabla: <code style="color:var(--ml)">predicciones_2026</code></h3>
+        <div class="code" style="font-size:.72rem">CREATE TABLE predicciones_2026 (
+  mes           DATE,
+  producto      TEXT,
+  ingresos_pred NUMERIC,
+  ingresos_real NUMERIC,
+  r2_score      NUMERIC,
+  modelo        TEXT
+);</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card">
+        <h3 style="margin-bottom:12px"><i class="fa-solid fa-chart-bar" style="color:var(--blue);margin-right:6px"></i>Datos actuales</h3>
+        <div class="stats" style="gap:10px">
+          <div class="stat" style="min-width:110px;padding:14px 16px">
+            <div class="num" style="font-size:1.6rem">16,794</div>
+            <div class="lbl"><i class="fa-solid fa-receipt" style="margin-right:3px"></i>Filas ventas</div>
+          </div>
+          <div class="stat" style="min-width:110px;padding:14px 16px">
+            <div class="num" style="font-size:1.6rem;color:var(--green)">S/ 406K</div>
+            <div class="lbl"><i class="fa-solid fa-sack-dollar" style="margin-right:3px"></i>Ingresos</div>
+          </div>
+          <div class="stat" style="min-width:110px;padding:14px 16px">
+            <div class="num" style="font-size:1.6rem;color:var(--ml)">180</div>
+            <div class="lbl"><i class="fa-solid fa-brain" style="margin-right:3px"></i>Predicciones</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h3 style="margin-bottom:10px"><i class="fa-solid fa-code" style="color:var(--teal);margin-right:6px"></i>Query clave para Grafana</h3>
+        <div class="code" style="font-size:.72rem">-- Ingresos diarios (timeseries)
+SELECT fecha::TIMESTAMPTZ AS time,
+       ROUND(SUM(total)::NUMERIC,2) AS "Ingresos S/"
+FROM ventas
+WHERE total > 0 AND fecha IS NOT NULL
+GROUP BY fecha
+ORDER BY fecha</div>
+      </div>
+      <div class="card" style="display:flex;align-items:center;gap:14px">
+        <i class="fa-solid fa-circle-info" style="color:var(--blue);font-size:1.3rem;flex-shrink:0"></i>
+        <p style="font-size:.82rem">Grafana requiere <code style="color:var(--blue)">fecha::TIMESTAMPTZ</code> en columnas DATE para que los paneles tipo <em>time series</em> funcionen correctamente.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ S8 GRAFANA ═══════════════ -->
+<div class="slide" id="s8">
+  <div class="slide-hdr">
+    <div class="icon-wrap" style="background:var(--grafana)"><i class="fa-solid fa-chart-area"></i></div>
+    <div><h2>Grafana — Dashboards en Tiempo Real</h2><p>2 dashboards · 29 paneles · 2 alertas automáticas · refresco 15s</p></div>
+  </div>
+  <div class="g2 fu stag">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card">
+        <h3 style="margin-bottom:10px;color:var(--pg)"><i class="fa-solid fa-store" style="margin-right:7px"></i>Dashboard: Ventas CasaMarket</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:.78rem">
+          <div style="background:var(--bg3);border-radius:6px;padding:6px 10px;color:var(--text2)"><i class="fa-solid fa-hashtag" style="color:var(--blue);margin-right:5px"></i>Total transacciones</div>
+          <div style="background:var(--bg3);border-radius:6px;padding:6px 10px;color:var(--text2)"><i class="fa-solid fa-sack-dollar" style="color:var(--green);margin-right:5px"></i>Ingresos totales S/</div>
+          <div style="background:var(--bg3);border-radius:6px;padding:6px 10px;color:var(--text2)"><i class="fa-solid fa-box" style="color:var(--spark);margin-right:5px"></i>Productos únicos</div>
+          <div style="background:var(--bg3);border-radius:6px;padding:6px 10px;color:var(--text2)"><i class="fa-solid fa-users" style="color:var(--teal);margin-right:5px"></i>Clientes únicos</div>
+          <div style="background:var(--bg3);border-radius:6px;padding:6px 10px;color:var(--text2)"><i class="fa-solid fa-chart-line" style="color:var(--blue);margin-right:5px"></i>Ingresos diarios</div>
+          <div style="background:var(--bg3);border-radius:6px;padding:6px 10px;color:var(--text2)"><i class="fa-solid fa-ranking-star" style="color:var(--grafana);margin-right:5px"></i>Top 10 productos</div>
+          <div style="background:var(--bg3);border-radius:6px;padding:6px 10px;color:var(--text2)"><i class="fa-solid fa-chart-pie" style="color:var(--ml);margin-right:5px"></i>Ingresos por categoría</div>
+          <div style="background:var(--bg3);border-radius:6px;padding:6px 10px;color:var(--text2)"><i class="fa-solid fa-robot" style="color:var(--ml);margin-right:5px"></i>+8 paneles ML 2026</div>
+        </div>
+      </div>
+      <div class="card">
+        <h3 style="margin-bottom:10px;color:var(--kafka)"><i class="fa-solid fa-gears" style="margin-right:7px"></i>Dashboard: Kafka + Spark</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:.78rem">
+          <div style="background:var(--bg3);border-radius:6px;padding:6px 10px;color:var(--text2)"><i class="fa-solid fa-server" style="color:var(--green);margin-right:5px"></i>Broker UP/DOWN</div>
+          <div style="background:var(--bg3);border-radius:6px;padding:6px 10px;color:var(--text2)"><i class="fa-solid fa-list" style="color:var(--blue);margin-right:5px"></i>Topics activos</div>
+          <div style="background:var(--bg3);border-radius:6px;padding:6px 10px;color:var(--text2)"><i class="fa-solid fa-envelope" style="color:var(--kafka);margin-right:5px"></i>Mensajes ventas.raw</div>
+          <div style="background:var(--bg3);border-radius:6px;padding:6px 10px;color:var(--text2)"><i class="fa-solid fa-gauge" style="color:var(--prom);margin-right:5px"></i>Consumer Lag gauge</div>
+          <div style="background:var(--bg3);border-radius:6px;padding:6px 10px;color:var(--text2)"><i class="fa-solid fa-chart-line" style="color:var(--blue);margin-right:5px"></i>Rate msg/s</div>
+          <div style="background:var(--bg3);border-radius:6px;padding:6px 10px;color:var(--text2)"><i class="fa-solid fa-table" style="color:var(--teal);margin-right:5px"></i>Consumer groups lag</div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card">
+        <h3 style="margin-bottom:10px"><i class="fa-solid fa-bell" style="color:#ef4444;margin-right:7px"></i>Alertas configuradas</h3>
+        <table style="font-size:.8rem">
+          <tr><th>Alerta</th><th>Condición</th><th>Severidad</th></tr>
+          <tr><td>Consumer Lag Alto</td><td>lag &gt; 500</td><td><span style="color:#f59e0b;font-weight:600"><i class="fa-solid fa-triangle-exclamation" style="margin-right:4px"></i>warning</span></td></tr>
+          <tr><td>Kafka Broker Down</td><td>up = 0</td><td><span style="color:#ef4444;font-weight:600"><i class="fa-solid fa-circle-xmark" style="margin-right:4px"></i>critical</span></td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h3 style="margin-bottom:10px"><i class="fa-solid fa-plug" style="color:var(--blue);margin-right:7px"></i>Datasources provisionados</h3>
+        <table style="font-size:.8rem">
+          <tr><th>Nombre</th><th>Tipo</th><th>UID</th></tr>
+          <tr><td><i class="fa-solid fa-fire" style="color:var(--prom);margin-right:5px"></i>Prometheus</td><td>prometheus</td><td style="font-family:'Fira Code';color:var(--ml)">casamarket-prom</td></tr>
+          <tr><td><i class="fa-solid fa-database" style="color:var(--pg);margin-right:5px"></i>PostgreSQL</td><td>postgres</td><td style="font-family:'Fira Code';color:var(--ml)">casamarket-pg</td></tr>
+        </table>
+      </div>
+      <div class="card" style="display:flex;gap:14px;align-items:center">
+        <i class="fa-solid fa-link" style="color:var(--grafana);font-size:1.4rem;flex-shrink:0"></i>
+        <div>
+          <h3>Acceso</h3>
+          <p style="font-size:.82rem">URL: <strong style="color:var(--blue)">http://localhost:43000</strong><br>Usuario: <code>admin</code> · Contraseña: <code>casamarket</code></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ S9 PROMETHEUS ═══════════════ -->
+<div class="slide" id="s9">
+  <div class="slide-hdr">
+    <div class="icon-wrap" style="background:var(--prom)"><i class="fa-solid fa-gauge-high"></i></div>
+    <div><h2>Prometheus — Observabilidad del Sistema</h2><p>Monitorea la infraestructura cada 15 segundos — no toca los datos de negocio</p></div>
+  </div>
+  <div class="g2 fu stag">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div class="icon-line" style="background:var(--prom);margin-bottom:0"><i class="fa-solid fa-eye"></i></div>
+          <h3>¿Qué hace Prometheus?</h3>
+        </div>
+        <p>Base de datos de series de tiempo que hace <strong>scraping</strong> (polling HTTP) a endpoints de métricas cada N segundos y las almacena en su TSDB local. Diseñado para monitorear infraestructura, no procesar datos.</p>
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div class="icon-line" style="background:var(--blue);margin-bottom:0"><i class="fa-solid fa-arrow-right-arrow-left"></i></div>
+          <h3>Spark vs Prometheus</h3>
+        </div>
+        <table style="font-size:.8rem">
+          <tr><th></th><th>Spark</th><th>Prometheus</th></tr>
+          <tr><td><strong>Rol</strong></td><td>Procesamiento</td><td>Monitoreo</td></tr>
+          <tr><td><strong>Procesa</strong></td><td>Datos de ventas</td><td>Métricas de infra</td></tr>
+          <tr><td><strong>Resultado</strong></td><td>Tabla ventas en PG</td><td>Gráficas de salud</td></tr>
+          <tr><td><strong>Sin él</strong></td><td>No hay datos</td><td>No hay alertas</td></tr>
+        </table>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div class="icon-line" style="background:var(--kafka);margin-bottom:0"><i class="fa-solid fa-link"></i></div>
+          <h3>Cadena de observabilidad</h3>
+        </div>
+        <div class="code" style="font-size:.75rem">Kafka Broker
+   │
+   ▼  kafka-exporter (danielqsj/kafka-exporter)
+   │  expone :9308/metrics (formato Prometheus)
+   │
+   ▼  Prometheus scraping cada 15s
+   │  guarda en TSDB local (:9090)
+   │
+   ▼  Grafana consulta con PromQL
+      visualiza en dashboards en vivo</div>
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div class="icon-line" style="background:var(--green);margin-bottom:0"><i class="fa-solid fa-ruler"></i></div>
+          <h3>Métricas clave (PromQL)</h3>
+        </div>
+        <table style="font-size:.78rem">
+          <tr><th>Métrica</th><th>Qué mide</th></tr>
+          <tr><td style="font-family:'Fira Code';font-size:.7rem">up{job="kafka-exporter"}</td><td>Broker vivo (0/1)</td></tr>
+          <tr><td style="font-family:'Fira Code';font-size:.7rem">kafka_topic_partition_current_offset</td><td>Total mensajes</td></tr>
+          <tr><td style="font-family:'Fira Code';font-size:.7rem">kafka_consumergroup_lag</td><td>Sin procesar</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ S10 ML ═══════════════ -->
+<div class="slide" id="s10">
+  <div class="slide-hdr">
+    <div class="icon-wrap" style="background:var(--ml)"><i class="fa-solid fa-brain"></i></div>
+    <div><h2>Machine Learning — Predicciones 2026</h2><p>LinearRegression por producto · 15 productos · 12 meses · 180 predicciones en PostgreSQL</p></div>
+  </div>
+  <div class="g2 fu stag">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div class="icon-line" style="background:var(--ml);margin-bottom:0"><i class="fa-solid fa-diagram-project"></i></div>
+          <h3>¿Cómo funciona el modelo?</h3>
+        </div>
+        <ol style="font-size:.83rem;color:var(--text2);line-height:2.2;padding-left:18px">
+          <li>Lee ventas desde PostgreSQL agrupadas por mes+producto</li>
+          <li>Selecciona el <strong>Top 15 productos</strong> por ingresos</li>
+          <li>Por cada producto entrena un <strong style="color:var(--ml)">LinearRegression</strong></li>
+          <li>Variable X = número de mes ordinal</li>
+          <li>Proyecta enero–diciembre 2026</li>
+          <li>Guarda 180 filas en <code style="color:var(--ml)">predicciones_2026</code></li>
+        </ol>
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div class="icon-line" style="background:var(--blue);margin-bottom:0"><i class="fa-solid fa-function"></i></div>
+          <h3>Fórmula</h3>
+        </div>
+        <div class="code">y = β₀ + β₁ · mes_ordinal
+
+X = número de mes relativo al mínimo
+y = ingresos del mes
+β₀= intercepto (ingresos base)
+β₁= tendencia mensual (crecimiento)</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div class="icon-line" style="background:var(--green);margin-bottom:0"><i class="fa-solid fa-ranking-star"></i></div>
+          <h3>Proyección anual 2026 — Top 5</h3>
+        </div>
+        <table style="font-size:.82rem">
+          <tr><th>Producto</th><th style="text-align:right">S/ proyectados</th></tr>
+          <tr><td>PEPSI 2000ML</td><td style="color:var(--green);font-weight:600;text-align:right">S/ 334,800</td></tr>
+          <tr><td>ESCOCESA 2250ml</td><td style="color:var(--green);font-weight:600;text-align:right">S/ 281,664</td></tr>
+          <tr><td>PILSEN CALLAO 620ml</td><td style="color:var(--green);font-weight:600;text-align:right">S/ 198,000</td></tr>
+          <tr><td>GUARANA BRASIL 3lt</td><td style="color:var(--green);font-weight:600;text-align:right">S/ 156,000</td></tr>
+          <tr style="background:#eff6ff"><td><strong>TOP 15 TOTAL</strong></td><td style="color:var(--blue);font-weight:700;text-align:right">S/ 1,614,943</td></tr>
+        </table>
+      </div>
+      <div class="card" style="background:#fff4ec;border-color:#fdd9bc">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <i class="fa-solid fa-triangle-exclamation" style="color:var(--grafana);font-size:1.1rem;flex-shrink:0"></i>
+          <h3>Limitación honesta</h3>
+        </div>
+        <p style="font-size:.82rem">Solo 2 meses de datos históricos (Abr–May 2026). Con pocos puntos, R² ≈ 0 y la proyección es constante. El <strong>framework ML está listo</strong>: mejorará automáticamente conforme lleguen más datos.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ S11 FLUJO ═══════════════ -->
+<div class="slide" id="s11">
+  <div class="slide-hdr">
+    <div class="icon-wrap" style="background:var(--green)"><i class="fa-solid fa-route"></i></div>
+    <div><h2>Flujo de Datos — Paso a Paso</h2><p>Desde el archivo Excel hasta Grafana, explicado tal como sucede</p></div>
+  </div>
+  <div class="sc">
+    <div class="steps fu stag">
+      <div class="step">
+        <div class="step-n">1</div>
+        <div class="step-b">
+          <h3><i class="fa-solid fa-magnifying-glass" style="color:var(--blue);margin-right:6px"></i>producer.py detecta documento nuevo</h3>
+          <p>Cada 5 min consulta la API del ERP con token JWT. Si hay reporte nuevo, publica evento JSON en <code>casamarket.documento.detectado</code>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">2</div>
+        <div class="step-b">
+          <h3><i class="fa-solid fa-download" style="color:var(--teal);margin-right:6px"></i>consumer_downloader.py descarga el Excel</h3>
+          <p>Escucha <code>documento.detectado</code>, descarga el .xlsx autenticado a la carpeta <code>output/descargas/</code>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">3</div>
+        <div class="step-b">
+          <h3><i class="fa-solid fa-file-excel" style="color:var(--green);margin-right:6px"></i>consumer_excel_parser.py parsea fila por fila</h3>
+          <p>Escanea la carpeta cada 60s, lee el Excel con pandas, normaliza columnas y publica 1 mensaje JSON por fila en <code>ventas.raw</code>. Un Excel de 3,811 filas → 3,811 mensajes Kafka.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">4</div>
+        <div class="step-b">
+          <h3><i class="fa-solid fa-inbox" style="color:var(--kafka);margin-right:6px"></i>Kafka persiste los mensajes con offset</h3>
+          <p>Los mensajes quedan en el topic con su número de offset. Son durables: si Spark no está listo, los mensajes esperan hasta que alguien los lea.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">5</div>
+        <div class="step-b">
+          <h3><i class="fa-solid fa-bolt" style="color:var(--spark);margin-right:6px"></i>Spark lee el micro-batch cada 30 segundos</h3>
+          <p>job_ventas.py lee todos los mensajes nuevos desde el último checkpoint, deserializa JSON, castea tipos y genera un DataFrame en memoria.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">6</div>
+        <div class="step-b">
+          <h3><i class="fa-solid fa-hard-drive" style="color:var(--pg);margin-right:6px"></i>Spark escribe en paralelo a Parquet y PostgreSQL</h3>
+          <p>Query 1 escribe Parquet (respaldo columnar). Query 2 usa <code>foreachBatch → JDBC append → tabla ventas</code> en PostgreSQL. Ambas en el mismo trigger de 30s.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">7</div>
+        <div class="step-b">
+          <h3><i class="fa-solid fa-chart-area" style="color:var(--grafana);margin-right:6px"></i>Grafana refresca los dashboards cada 15s</h3>
+          <p>Ejecuta queries SQL contra PostgreSQL y PromQL contra Prometheus. Los paneles se actualizan automáticamente — visibilidad total en menos de 1 minuto desde la venta.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ S12 ARCHIVOS ═══════════════ -->
+<div class="slide" id="s12">
+  <div class="slide-hdr">
+    <div class="icon-wrap" style="background:var(--teal)"><i class="fa-solid fa-folder-tree"></i></div>
+    <div><h2>Estructura de Archivos del Proyecto</h2><p>Organización de carpetas y responsabilidad de cada componente</p></div>
+  </div>
+  <div class="g2 fu stag">
+    <div class="code" style="font-size:.76rem;line-height:1.85">UnidadII/
+├── <span style="color:#f46800">docker-compose.yml</span>      ← Orquesta 11 servicios
+├── <span style="color:#f46800">Dockerfile</span>              ← Imagen Python
+├── .env                    ← Credenciales API
+│
+├── producer/
+│   └── <span style="color:#2563eb">producer.py</span>         ← Detecta docs → Kafka
+│
+├── consumer/
+│   ├── <span style="color:#2563eb">consumer_downloader.py</span>   ← Descarga xlsx
+│   └── <span style="color:#2563eb">consumer_excel_parser.py</span> ← Lee filas → Kafka
+│
+├── spark_streaming/
+│   ├── <span style="color:#e25a1c">job_ventas.py</span>       ← ventas.raw → PG+Parquet
+│   └── <span style="color:#e25a1c">job_documentos.py</span>   ← docs → Parquet+métricas
+│
+├── ml/
+│   └── <span style="color:#7c3aed">prediccion_ventas.py</span> ← sklearn LinearRegression
+│
+├── postgres/
+│   └── <span style="color:#336791">init.sql</span>            ← Schema + tablas
+│
+└── notebooks/              ← JupyterLab exploración</div>
+    <div class="code" style="font-size:.76rem;line-height:1.85">output/
+├── descargas/              ← Excel descargados
+└── parquet/
+    ├── ventas/             ← Stream raw Parquet
+    ├── documentos/         ← Eventos Parquet
+    ├── por_extension/      ← Ventanas 5min
+    ├── metricas/           ← Latencia ms
+    └── checkpoints/        ← Estado Spark
+
+observability/
+├── prometheus.yml          ← Config scraping
+├── alertas.yml             ← Reglas alertas
+└── grafana/
+    ├── provisioning/
+    │   └── datasources/
+    │       └── ds.yml      ← PG + Prometheus
+    └── dashboards/
+        ├── ventas_casamarket.json  ← 19 paneles
+        └── kafka_spark.json        ← 10 paneles
+
+presentacion/
+└── index.html              ← Esta presentación</div>
+  </div>
+</div>
+
+<!-- ═══════════════ S13 PUERTOS ═══════════════ -->
+<div class="slide" id="s13">
+  <div class="slide-hdr">
+    <div class="icon-wrap" style="background:var(--blue)"><i class="fa-solid fa-network-wired"></i></div>
+    <div><h2>Servicios Levantados y Puertos</h2><p>11 servicios en red interna ec-kafka-dev-net — levantar con: <code>docker compose up -d</code></p></div>
+  </div>
+  <div class="g2 fu stag" style="max-width:1140px;width:100%">
+    <div class="pc">
+      <div class="dot" style="background:var(--grafana)"></div>
+      <div>
+        <div class="sn"><i class="fa-solid fa-chart-area" style="color:var(--grafana);margin-right:7px"></i>Grafana</div>
+        <div class="url">http://localhost:43000</div>
+        <div class="cr">admin / casamarket</div>
+      </div>
+    </div>
+    <div class="pc">
+      <div class="dot" style="background:var(--kafka)"></div>
+      <div>
+        <div class="sn"><i class="fa-solid fa-envelopes-bulk" style="color:var(--kafka);margin-right:7px"></i>Kafka UI</div>
+        <div class="url">http://localhost:18085</div>
+        <div class="cr">sin login requerido</div>
+      </div>
+    </div>
+    <div class="pc">
+      <div class="dot" style="background:#f5a623"></div>
+      <div>
+        <div class="sn"><i class="fa-brands fa-python" style="color:#3776ab;margin-right:7px"></i>JupyterLab</div>
+        <div class="url">http://localhost:8888</div>
+        <div class="cr">token: casamarket</div>
+      </div>
+    </div>
+    <div class="pc">
+      <div class="dot" style="background:var(--prom)"></div>
+      <div>
+        <div class="sn"><i class="fa-solid fa-gauge-high" style="color:var(--prom);margin-right:7px"></i>Prometheus</div>
+        <div class="url">http://localhost:49090</div>
+        <div class="cr">sin login requerido</div>
+      </div>
+    </div>
+    <div class="pc">
+      <div class="dot" style="background:var(--spark)"></div>
+      <div>
+        <div class="sn"><i class="fa-solid fa-bolt" style="color:var(--spark);margin-right:7px"></i>Spark UI — jupyter</div>
+        <div class="url">http://localhost:4040</div>
+        <div class="cr">jobs interactivos notebook</div>
+      </div>
+    </div>
+    <div class="pc">
+      <div class="dot" style="background:var(--spark)"></div>
+      <div>
+        <div class="sn"><i class="fa-solid fa-bolt" style="color:var(--spark);margin-right:7px"></i>Spark UI — spark-ventas</div>
+        <div class="url">http://localhost:4042</div>
+        <div class="cr">streaming ventas.raw</div>
+      </div>
+    </div>
+    <div class="pc">
+      <div class="dot" style="background:var(--spark)"></div>
+      <div>
+        <div class="sn"><i class="fa-solid fa-bolt" style="color:var(--spark);margin-right:7px"></i>Spark UI — spark-streaming</div>
+        <div class="url">http://localhost:4041</div>
+        <div class="cr">streaming documento.detectado</div>
+      </div>
+    </div>
+    <div class="pc">
+      <div class="dot" style="background:var(--pg)"></div>
+      <div>
+        <div class="sn"><i class="fa-solid fa-database" style="color:var(--pg);margin-right:7px"></i>PostgreSQL</div>
+        <div class="url">localhost:15432</div>
+        <div class="cr">casamarket / casamarket / db: casamarket</div>
+      </div>
+    </div>
+    <div class="pc">
+      <div class="dot" style="background:var(--prom)"></div>
+      <div>
+        <div class="sn"><i class="fa-solid fa-chart-simple" style="color:var(--prom);margin-right:7px"></i>Kafka Exporter</div>
+        <div class="url">http://localhost:49308/metrics</div>
+        <div class="cr">formato Prometheus</div>
+      </div>
+    </div>
+    <div class="pc">
+      <div class="dot" style="background:var(--kafka)"></div>
+      <div>
+        <div class="sn"><i class="fa-solid fa-server" style="color:var(--kafka);margin-right:7px"></i>Kafka Broker</div>
+        <div class="url">localhost:19092</div>
+        <div class="cr">acceso externo al broker</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ S14 CONCEPTOS TEÓRICOS ═══════════════ -->
+<div class="slide" id="s14">
+  <div class="slide-hdr">
+    <div class="icon-wrap" style="background:var(--ml)"><i class="fa-solid fa-book-open"></i></div>
+    <div><h2>Conceptos Teóricos Aplicados</h2><p>Fundamentos de Big Data, streaming y arquitecturas modernas usados en el proyecto</p></div>
+  </div>
+  <div class="g3 fu stag">
+    <div class="card">
+      <div class="icon-line" style="background:var(--teal)"><i class="fa-solid fa-water"></i></div>
+      <h3>Arquitectura Kappa</h3>
+      <p>A diferencia de Lambda (batch + streaming), Kappa usa <strong>solo streaming</strong> como fuente de verdad. Todo el histórico vive en Kafka y se puede recomputar.</p>
+    </div>
+    <div class="card">
+      <div class="icon-line" style="background:var(--spark)"><i class="fa-solid fa-clock-rotate-left"></i></div>
+      <h3>Streaming vs Batch</h3>
+      <p><strong>Batch:</strong> datos acumulados, procesa una vez al día. <strong>Streaming:</strong> cada evento en tiempo real. Spark usa <em>micro-batches</em> de 30s como punto medio.</p>
+    </div>
+    <div class="card">
+      <div class="icon-line" style="background:var(--kafka)"><i class="fa-solid fa-rss"></i></div>
+      <h3>Pub/Sub y Event Sourcing</h3>
+      <p>Productores publican sin saber quién consume. El log de Kafka es la fuente de verdad histórica — los eventos son inmutables y reproducibles.</p>
+    </div>
+    <div class="card">
+      <div class="icon-line" style="background:var(--blue)"><i class="fa-solid fa-window-maximize"></i></div>
+      <h3>Windowing — Ventanas</h3>
+      <p>Spark agrupa eventos en ventanas de <strong>5 minutos</strong> con watermark de 10 min. El watermark tolera mensajes tardíos sin afectar resultados ya emitidos.</p>
+    </div>
+    <div class="card">
+      <div class="icon-line" style="background:var(--green)"><i class="fa-solid fa-shield-check"></i></div>
+      <h3>At-least-once Delivery</h3>
+      <p>Kafka + Spark garantizan que cada mensaje se procesa <em>al menos una vez</em>. Los checkpoints guardan el offset procesado — ante una caída, reanuda desde ahí.</p>
+    </div>
+    <div class="card">
+      <div class="icon-line" style="background:var(--ml)"><i class="fa-solid fa-table-columns"></i></div>
+      <h3>Parquet — Formato Columnar</h3>
+      <p>Agrupa valores de la misma columna en disco. Un <code>SELECT SUM(total)</code> solo lee la columna <em>total</em>, no el registro completo → 10× más rápido para analítica.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ S15 RESULTADOS ═══════════════ -->
+<div class="slide" id="s15">
+  <div class="slide-hdr">
+    <div class="icon-wrap" style="background:var(--green)"><i class="fa-solid fa-trophy"></i></div>
+    <div><h2>Resultados con Datos Reales</h2><p>Todos los datos provienen del ERP real de Casa Market — 0% sintéticos</p></div>
+  </div>
+  <div style="width:100%;max-width:1140px">
+    <div class="stats fu stag" style="margin-bottom:20px">
+      <div class="stat">
+        <div class="num">30,372</div>
+        <div class="lbl"><i class="fa-solid fa-envelope" style="margin-right:4px;color:var(--kafka)"></i>Mensajes Kafka</div>
+      </div>
+      <div class="stat">
+        <div class="num" style="color:var(--green)">16,794</div>
+        <div class="lbl"><i class="fa-solid fa-receipt" style="margin-right:4px"></i>Ventas en PostgreSQL</div>
+      </div>
+      <div class="stat">
+        <div class="num" style="color:var(--grafana)">S/ 406K</div>
+        <div class="lbl"><i class="fa-solid fa-sack-dollar" style="margin-right:4px"></i>Ingresos reales</div>
+      </div>
+      <div class="stat">
+        <div class="num">62</div>
+        <div class="lbl"><i class="fa-solid fa-box" style="margin-right:4px;color:var(--spark)"></i>Productos únicos</div>
+      </div>
+      <div class="stat">
+        <div class="num" style="color:var(--teal)">1,106</div>
+        <div class="lbl"><i class="fa-solid fa-users" style="margin-right:4px"></i>Clientes únicos</div>
+      </div>
+      <div class="stat">
+        <div class="num" style="color:var(--ml)">S/ 1.6M</div>
+        <div class="lbl"><i class="fa-solid fa-brain" style="margin-right:4px"></i>Proyección ML 2026</div>
+      </div>
+    </div>
+    <div class="g2 fu">
+      <div class="card">
+        <h3 style="margin-bottom:10px"><i class="fa-solid fa-calendar" style="color:var(--blue);margin-right:7px"></i>Periodo y fuente de datos</h3>
+        <table style="font-size:.83rem">
+          <tr><th>Campo</th><th>Detalle</th></tr>
+          <tr><td>Periodo</td><td>Abr 27 – May 19, 2026</td></tr>
+          <tr><td>Fuente</td><td>ERP admin.casamarket.la (Excel reales)</td></tr>
+          <tr><td>Vendedores</td><td>ROSA CUSILAYME, ULISES CALSIN y 4 más</td></tr>
+          <tr><td>Clientes reales</td><td>BOTICA SAN PABLO, ROXANA HILASACA y más</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h3 style="margin-bottom:10px"><i class="fa-solid fa-ranking-star" style="color:var(--green);margin-right:7px"></i>Top 3 productos por ingresos</h3>
+        <table style="font-size:.83rem">
+          <tr><th>#</th><th>Producto</th><th>Ingresos</th></tr>
+          <tr><td>1</td><td>PEPSI 2000ML</td><td style="color:var(--green);font-weight:600">S/ 334,800</td></tr>
+          <tr><td>2</td><td>ESCOCESA 2250ml</td><td style="color:var(--green);font-weight:600">S/ 281,664</td></tr>
+          <tr><td>3</td><td>PILSEN CALLAO 620ml</td><td style="color:var(--green);font-weight:600">S/ 198,000</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ S16 DEMO ═══════════════ -->
+<div class="slide" id="s16">
+  <div class="slide-hdr">
+    <div class="icon-wrap" style="background:var(--grafana)"><i class="fa-solid fa-play"></i></div>
+    <div><h2>Guía de Demo — Expo en Vivo</h2><p>5 pasos para mostrar el pipeline funcionando en tiempo real</p></div>
+  </div>
+  <div class="sc">
+    <div class="steps fu stag">
+      <div class="step" style="border-left:4px solid var(--kafka)">
+        <div class="step-n" style="background:var(--kafka)">1</div>
+        <div class="step-b">
+          <h3><i class="fa-solid fa-envelopes-bulk" style="color:var(--kafka);margin-right:7px"></i>Kafka UI <code>:18085</code> — Topics con mensajes reales</h3>
+          <p>Abrir Topics → casamarket.ventas.raw → mostrar 30,372 mensajes → click en un mensaje → ver el JSON de venta real (PEPSI, cliente, total, vendedor).</p>
+        </div>
+      </div>
+      <div class="step" style="border-left:4px solid var(--grafana)">
+        <div class="step-n" style="background:var(--grafana)">2</div>
+        <div class="step-b">
+          <h3><i class="fa-solid fa-chart-area" style="color:var(--grafana);margin-right:7px"></i>Grafana <code>:43000</code> — Dashboard Ventas CasaMarket</h3>
+          <p>Señalar: ingresos totales S/ 406K, top productos, gráfica diaria, y la sección de predicciones ML con la proyección de S/ 1.6M para 2026.</p>
+        </div>
+      </div>
+      <div class="step" style="border-left:4px solid var(--prom)">
+        <div class="step-n" style="background:var(--prom)">3</div>
+        <div class="step-b">
+          <h3><i class="fa-solid fa-gauge-high" style="color:var(--prom);margin-right:7px"></i>Dashboard Kafka + Spark — Infraestructura en verde</h3>
+          <p>Cambiar al dashboard de infraestructura. Señalar: Broker UP (verde), Consumer Lag = 0, rate de mensajes por segundo, consumer groups al día.</p>
+        </div>
+      </div>
+      <div class="step" style="border-left:4px solid var(--spark)">
+        <div class="step-n" style="background:var(--spark)">4</div>
+        <div class="step-b">
+          <h3><i class="fa-solid fa-bolt" style="color:var(--spark);margin-right:7px"></i>Spark UI <code>:4042</code> — Jobs streaming activos</h3>
+          <p>Abrir Spark UI del job ventas. Ir a "Streaming" tab → mostrar las 3 queries activas en estado "Running" y el historial de micro-batches.</p>
+        </div>
+      </div>
+      <div class="step" style="border-left:4px solid var(--pg)">
+        <div class="step-n" style="background:var(--pg)">5</div>
+        <div class="step-b">
+          <h3><i class="fa-solid fa-database" style="color:var(--pg);margin-right:7px"></i>PostgreSQL — Datos en vivo desde consola</h3>
+          <div class="code" style="margin-top:6px;font-size:.74rem">psql -h localhost -p 15432 -U casamarket -d casamarket -c \
+"SELECT COUNT(*), ROUND(SUM(total)::NUMERIC,2) FROM ventas WHERE total > 0;"</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ S17 CIERRE ═══════════════ -->
+<div class="slide" id="s17" style="background:linear-gradient(135deg,#eff6ff,#f0fdf4,#faf5ff)">
+  <div style="text-align:center;max-width:900px">
+    <div style="display:inline-flex;align-items:center;justify-content:center;width:96px;height:96px;border-radius:28px;background:linear-gradient(135deg,#2563eb,#7c3aed);box-shadow:0 12px 40px rgba(37,99,235,.3);margin-bottom:28px">
+      <i class="fa-solid fa-rocket" style="font-size:2.4rem;color:#fff"></i>
+    </div>
+    <h1>Pipeline Completo y Funcionando</h1>
+    <p style="font-size:1rem;margin-top:12px">Datos reales · Tiempo real · Machine Learning · Observabilidad completa</p>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-top:36px" class="fu stag">
+      <div class="stat"><div class="num">11</div><div class="lbl"><i class="fa-brands fa-docker" style="color:var(--teal)"></i> Servicios</div></div>
+      <div class="stat"><div class="num" style="color:var(--kafka)">30,372</div><div class="lbl"><i class="fa-solid fa-envelope"></i> Mensajes Kafka</div></div>
+      <div class="stat"><div class="num" style="color:var(--green)">S/ 406K</div><div class="lbl"><i class="fa-solid fa-sack-dollar"></i> Ingresos reales</div></div>
+      <div class="stat"><div class="num" style="color:var(--ml)">S/ 1.6M</div><div class="lbl"><i class="fa-solid fa-brain"></i> Proyección 2026</div></div>
+      <div class="stat"><div class="num" style="color:var(--grafana)">29</div><div class="lbl"><i class="fa-solid fa-chart-area"></i> Paneles Grafana</div></div>
+    </div>
+    <div style="display:flex;gap:12px;justify-content:center;margin-top:32px;flex-wrap:wrap">
+      <span style="background:#eff6ff;color:var(--blue);border:1px solid #bfdbfe;border-radius:20px;padding:6px 18px;font-size:.85rem;font-weight:500"><i class="fa-solid fa-university" style="margin-right:6px"></i>Universidad Peruana Unión</span>
+      <span style="background:#f0fdf4;color:var(--green);border:1px solid #bbf7d0;border-radius:20px;padding:6px 18px;font-size:.85rem;font-weight:500"><i class="fa-solid fa-graduation-cap" style="margin-right:6px"></i>IX Ciclo · Big Data Unidad II</span>
+      <span style="background:#faf5ff;color:var(--ml);border:1px solid #ddd6fe;border-radius:20px;padding:6px 18px;font-size:.85rem;font-weight:500"><i class="fa-solid fa-chalkboard-user" style="margin-right:6px"></i>Mg. Angel Sullon</span>
+    </div>
+  </div>
+</div>
+
+</div><!-- /deck -->
+
+<div class="nav">
+  <button onclick="prev()"><i class="fa-solid fa-arrow-left"></i> Anterior</button>
+  <span class="ctr" id="ctr">1 / 17</span>
+  <button onclick="next()">Siguiente <i class="fa-solid fa-arrow-right"></i></button>
+</div>
+
+<script>
+const slides = document.querySelectorAll('.slide');
+const N = slides.length;
+let cur = 0;
+
+function go(n) {
+  slides[cur].classList.remove('active');
+  slides[cur].classList.add('out');
+  const prev = cur;
+  cur = n;
+  setTimeout(() => slides[prev].classList.remove('out'), 380);
+  slides[cur].classList.add('active');
+  upd();
+}
+function next() { if (cur < N-1) go(cur+1); }
+function prev() { if (cur > 0) go(cur-1); }
+
+function upd() {
+  document.getElementById('ctr').textContent = `${cur+1} / ${N}`;
+  document.getElementById('pglbl').textContent = `${cur+1} / ${N}`;
+  document.getElementById('prog').style.width = `${((cur+1)/N)*100}%`;
+}
+
+document.addEventListener('keydown', e => {
+  if (['ArrowRight','Space','PageDown'].includes(e.code)) { e.preventDefault(); next(); }
+  if (['ArrowLeft','PageUp'].includes(e.code)) { e.preventDefault(); prev(); }
+});
+
+let sx = 0;
+document.addEventListener('touchstart', e => sx = e.touches[0].clientX);
+document.addEventListener('touchend', e => {
+  const dx = e.changedTouches[0].clientX - sx;
+  if (dx < -50) next();
+  if (dx > 50) prev();
+});
+
+upd();
+</script>
+</body>
+</html>

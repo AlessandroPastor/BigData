@@ -1,0 +1,330 @@
+services:
+
+  # ── Kafka (KRaft, sin ZooKeeper) ─────────────────────────────────────────────
+  ec-kafka:
+    image: apache/kafka:3.7.0
+    container_name: ec-kafka
+    hostname: ec-kafka
+    ports:
+      - "19092:19092"   # acceso externo desde el host
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:19092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://ec-kafka:9092,EXTERNAL://localhost:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@ec-kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: 4L6g3nShT-eMCtK--X86sw
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - ec-kafka-dev-net
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ── Kafka UI ──────────────────────────────────────────────────────────────────
+  kafka-ui:
+    image: ghcr.io/kafbat/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "18085:8080"    # http://localhost:18085
+    environment:
+      KAFKA_CLUSTERS_0_NAME: casamarket-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: ec-kafka:9092
+    depends_on:
+      ec-kafka:
+        condition: service_healthy
+    networks:
+      - ec-kafka-dev-net
+
+  # ── Producer: monitorea API Casa Market → publica a Kafka ─────────────────────
+  producer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: casamarket-python:latest
+    container_name: producer
+    command: python /app/producer/producer.py
+    volumes:
+      - ./producer:/app/producer
+    environment:
+      KAFKA_BOOTSTRAP: "ec-kafka:9092"
+      POLL_INTERVAL_SECONDS: "300"
+      DAYS_BACK: "30"
+    env_file:
+      - .env
+    depends_on:
+      ec-kafka:
+        condition: service_healthy
+    networks:
+      - ec-kafka-dev-net
+    restart: unless-stopped
+
+  # ── Consumer Downloader: descarga Excel/PDF desde S3 ─────────────────────────
+  consumer-downloader:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: casamarket-python:latest
+    container_name: consumer-downloader
+    command: python /app/consumer/consumer_downloader.py
+    volumes:
+      - ./consumer:/app/consumer
+      - ./output/descargas:/app/output/descargas
+    environment:
+      KAFKA_BOOTSTRAP: "ec-kafka:9092"
+      DOWNLOAD_DIR: "/app/output/descargas"
+    env_file:
+      - .env
+    depends_on:
+      ec-kafka:
+        condition: service_healthy
+    networks:
+      - ec-kafka-dev-net
+    restart: unless-stopped
+
+  # ── Consumer Excel Parser: lee filas del Excel → publica a casamarket.ventas.raw
+  consumer-excel-parser:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: casamarket-python:latest
+    container_name: consumer-excel-parser
+    command: python /app/consumer/consumer_excel_parser.py
+    volumes:
+      - ./consumer:/app/consumer
+      - ./output/descargas:/app/output/descargas   # comparte descargas con downloader
+    environment:
+      KAFKA_BOOTSTRAP: "ec-kafka:9092"
+      DOWNLOAD_DIR: "/app/output/descargas"
+    env_file:
+      - .env
+    depends_on:
+      ec-kafka:
+        condition: service_healthy
+    networks:
+      - ec-kafka-dev-net
+    restart: unless-stopped
+
+  # ── PostgreSQL: almacena ventas para Grafana y ML ─────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: casamarket-postgres
+    ports:
+      - "15432:5432"    # psql -h localhost -p 15432 -U casamarket -d casamarket
+    environment:
+      POSTGRES_DB:       casamarket
+      POSTGRES_USER:     casamarket
+      POSTGRES_PASSWORD: casamarket
+    # wal_level=logical requerido por Debezium CDC
+    command: >
+      postgres
+      -c wal_level=logical
+      -c max_replication_slots=5
+      -c max_wal_senders=5
+    volumes:
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ec-kafka-dev-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U casamarket"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Spark job_documentos: consume topic de eventos → Parquet/métricas ──────────
+  spark-streaming:
+    image: jupyter/pyspark-notebook:latest
+    container_name: spark-streaming
+    ports:
+      - "4041:4040"     # Spark UI: http://localhost:4041
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        spark-submit \
+          --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1 \
+          --master local[2] \
+          /home/jovyan/app/job_documentos.py
+    volumes:
+      - ./spark_streaming:/home/jovyan/app
+      - ./output:/home/jovyan/output
+    depends_on:
+      ec-kafka:
+        condition: service_healthy
+    networks:
+      - ec-kafka-dev-net
+    restart: unless-stopped
+
+  # ── Spark job_ventas: consume ventas.raw → Parquet + PostgreSQL ───────────────
+  spark-ventas:
+    image: jupyter/pyspark-notebook:latest
+    container_name: spark-ventas
+    ports:
+      - "4042:4040"     # Spark UI: http://localhost:4042
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        spark-submit \
+          --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.postgresql:postgresql:42.7.3,mysql:mysql-connector-java:8.0.33 \
+          --master local[2] \
+          /home/jovyan/app/job_ventas.py
+    volumes:
+      - ./spark_streaming:/home/jovyan/app
+      - ./output:/home/jovyan/output
+    depends_on:
+      ec-kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - ec-kafka-dev-net
+    restart: unless-stopped
+
+  # ── JupyterLab + PySpark: exploración interactiva ────────────────────────────
+  jupyter:
+    image: jupyter/pyspark-notebook:latest
+    container_name: jupyter-spark
+    ports:
+      - "8888:8888"     # JupyterLab: http://localhost:8888  (token: casamarket)
+      - "4040:4040"     # Spark UI (notebooks): http://localhost:4040
+    environment:
+      JUPYTER_TOKEN: "casamarket"
+      PYSPARK_SUBMIT_ARGS: >-
+        --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1
+        pyspark-shell
+    volumes:
+      - ./notebooks:/home/jovyan/work
+      - ./output:/home/jovyan/output
+    depends_on:
+      ec-kafka:
+        condition: service_healthy
+    networks:
+      - ec-kafka-dev-net
+
+  # ── S8: Kafka Exporter → expone métricas Prometheus ──────────────────────────
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: kafka-exporter
+    ports:
+      - "49308:9308"    # http://localhost:49308/metrics
+    command:
+      - --kafka.server=ec-kafka:9092
+      - --kafka.version=3.7.0
+    depends_on:
+      ec-kafka:
+        condition: service_healthy
+    networks:
+      - ec-kafka-dev-net
+    restart: unless-stopped
+
+  # ── S8: Prometheus — recolecta métricas ──────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "49090:9090"    # http://localhost:49090
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alertas.yml:/etc/prometheus/alertas.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.console.libraries=/usr/share/prometheus/console_libraries
+      - --web.console.templates=/usr/share/prometheus/consoles
+    depends_on:
+      - kafka-exporter
+    networks:
+      - ec-kafka-dev-net
+    restart: unless-stopped
+
+  # ── S8: Grafana — dashboards de observabilidad ────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "43000:3000"    # http://localhost:43000  (admin/casamarket)
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "casamarket"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - ec-kafka-dev-net
+    restart: unless-stopped
+
+  # ── Debezium Kafka Connect: captura cambios de PostgreSQL → Kafka ─────────────
+  kafka-connect:
+    image: quay.io/debezium/connect:2.7
+    container_name: kafka-connect
+    ports:
+      - "8083:8083"     # REST API: http://localhost:8083
+    environment:
+      BOOTSTRAP_SERVERS:                ec-kafka:9092
+      GROUP_ID:                         debezium-connect-group
+      CONFIG_STORAGE_TOPIC:             debezium.connect.configs
+      OFFSET_STORAGE_TOPIC:             debezium.connect.offsets
+      STATUS_STORAGE_TOPIC:             debezium.connect.status
+      CONFIG_STORAGE_REPLICATION_FACTOR:  "1"
+      OFFSET_STORAGE_REPLICATION_FACTOR:  "1"
+      STATUS_STORAGE_REPLICATION_FACTOR:  "1"
+    depends_on:
+      ec-kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - ec-kafka-dev-net
+    restart: unless-stopped
+
+  # ── MySQL Sync: consume topic Debezium → escribe en MySQL Laragon ─────────────
+  mysql-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: casamarket-python:latest
+    container_name: mysql-sync
+    command: python /app/mysql_sync/mysql_sync.py
+    volumes:
+      - ./mysql_sync:/app/mysql_sync
+    environment:
+      KAFKA_BOOTSTRAP:  "ec-kafka:9092"
+      MYSQL_HOST:       "host.docker.internal"
+      MYSQL_PORT:       "3306"
+      MYSQL_DB:         "casamarket_mysql"
+      MYSQL_USER:       "root"
+      MYSQL_PASSWORD:   ""
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      ec-kafka:
+        condition: service_healthy
+    networks:
+      - ec-kafka-dev-net
+    restart: unless-stopped
+
+volumes:
+  kafka_data:
+  prometheus_data:
+  grafana_data:
+  postgres_data:
+
+networks:
+  ec-kafka-dev-net:
+    name: ec-kafka-dev-net

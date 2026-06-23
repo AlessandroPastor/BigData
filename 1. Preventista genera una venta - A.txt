@@ -1,0 +1,10 @@
+1. Preventista genera una venta -> Aparece en Pedidos Pendientes
+2. Se asigna un ruta a la venta -> Admin
+
+$________________________________________________________________________$ 
+                               Regla de Oro
+
+    Si no asigna un ruta no se puede visualizar el reporte de cada dia 
+    entonces como debemos de hacer esto.
+$------------------------------------------------------------------------$
+

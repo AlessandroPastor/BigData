@@ -1,0 +1,56 @@
+# Credenciales y secretos — NUNCA subir
+.env
+*.env
+.env.*
+
+# Entorno virtual Python
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Archivos de salida grandes
+output/descargas/
+output/parquet/
+output/checkpoints/
+output/
+
+# Estado interno (opcional mantener fuera del repo)
+producer/state_documentos.json
+consumer/state_downloads.json
+consumer/state_excel_parsed.json
+
+# Presentacion PPTX (archivo binario grande)
+pptx/
+
+# Material del curso (archivos grandes)
+material/
+
+# Docker volumes / datos locales
+*.log
+*.tmp
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Spark
+derby.log
+metastore_db/
