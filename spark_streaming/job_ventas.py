@@ -41,24 +41,26 @@ CHECKPOINT_AGG   = f"{OUTPUT_BASE}/checkpoints/ventas_agg"
 TRIGGER_SECS     = "30 seconds"
 
 # Schema flexible — capturamos los campos estándar normalizados por el parser
+# Incluye 'hora' recuperada del CSV original del ERP (ej: "21:30:27")
 SCHEMA = StructType([
-    StructField("fecha",          StringType(), True),
-    StructField("producto",       StringType(), True),
-    StructField("cod_producto",   StringType(), True),
-    StructField("marca",          StringType(), True),
-    StructField("categoria",      StringType(), True),
-    StructField("subcategoria",   StringType(), True),
-    StructField("cantidad",       StringType(), True),
+    StructField("fecha",           StringType(), True),
+    StructField("hora",            StringType(), True),   # HH:MM:SS del ERP
+    StructField("producto",        StringType(), True),
+    StructField("cod_producto",    StringType(), True),
+    StructField("marca",           StringType(), True),
+    StructField("categoria",       StringType(), True),
+    StructField("subcategoria",    StringType(), True),
+    StructField("cantidad",        StringType(), True),
     StructField("precio_unitario", StringType(), True),
-    StructField("total",          StringType(), True),
-    StructField("cliente",        StringType(), True),
-    StructField("ruc_cliente",    StringType(), True),
-    StructField("vendedor",       StringType(), True),
-    StructField("razon_social",   StringType(), True),
-    StructField("zona",           StringType(), True),
-    StructField("_doc_id",        LongType(),   True),
-    StructField("_archivo",       StringType(), True),
-    StructField("_parseado_en",   StringType(), True),
+    StructField("total",           StringType(), True),
+    StructField("cliente",         StringType(), True),
+    StructField("ruc_cliente",     StringType(), True),
+    StructField("vendedor",        StringType(), True),
+    StructField("razon_social",    StringType(), True),
+    StructField("zona",            StringType(), True),
+    StructField("_doc_id",         LongType(),   True),
+    StructField("_archivo",        StringType(), True),
+    StructField("_parseado_en",    StringType(), True),
 ])
 
 
@@ -97,11 +99,14 @@ def parse_stream(spark: SparkSession):
 
 
 def _preparar_ventas(batch_df):
-    """Selecciona y renombra columnas comunes para ambos sinks."""
+    """Selecciona y renombra columnas comunes para ambos sinks.
+    Incluye 'hora' recuperada del CSV del ERP para análisis horario en Grafana.
+    """
     return (
         batch_df
         .select(
             col("fecha_dt").alias("fecha"),
+            col("hora"),                               # HH:MM:SS string
             col("producto"),
             col("cod_producto"),
             col("marca"),

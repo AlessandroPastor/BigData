@@ -28,8 +28,10 @@ producer/state_documentos.json
 consumer/state_downloads.json
 consumer/state_excel_parsed.json
 
-# Presentacion PPTX (archivo binario grande)
-pptx/
+# Presentaciones PPTX — excluir binarios grandes, incluir scripts
+pptx/*.pptx
+pptx/logos/*.gif
+# pptx/ scripts Python y logos PNG/SVG si se incluyen
 
 # Material del curso (archivos grandes)
 material/

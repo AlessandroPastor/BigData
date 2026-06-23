@@ -80,6 +80,11 @@ _ALIAS = {
     "marca": "marca",
     "categoria": "categoria",
     "sub_categoria": "subcategoria",
+    # hora de la venta — recuperada del CSV original del ERP (ej: "21:30:27")
+    "hora": "hora",
+    "hour": "hora",
+    "hora_venta": "hora",
+    "hora_de_venta": "hora",
 }
 
 
