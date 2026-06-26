@@ -44,12 +44,15 @@ log = logging.getLogger(__name__)
 # ─── Configuracion ─────────────────────────────────────────────────────────────
 DB_URL            = "postgresql://casamarket:casamarket@postgres:5432/casamarket"
 RETRAIN_INTERVAL  = 1800   # segundos entre ciclos (30 min)
-MIN_DIAS          = 7      # minimo de dias historicos para entrenar un modelo
-N_FORECAST_DAYS   = 30     # dias a pronosticar hacia el futuro
+MIN_DIAS          = 3      # minimo de dias historicos para entrenar un modelo
+N_FORECAST_DAYS   = 62     # dias a pronosticar (cubre el mes actual + siguiente completo)
 N_ESTIMATORS      = 150    # arboles en GradientBoosting
 MAX_DEPTH         = 3      # profundidad maxima de cada arbol
 LEARNING_RATE     = 0.08   # tasa de aprendizaje
-CI_FACTOR         = 1.5    # factor para el intervalo de confianza (+/- CI_FACTOR * MAE)
+CI_FACTOR         = 1.5    # fallback si hay pocos datos para quantile regression
+QUANTILE_LOW      = 0.10   # P10  — banda inferior (90% de los dias reales quedan arriba)
+QUANTILE_HIGH     = 0.90   # P90  — banda superior (90% de los dias reales quedan abajo)
+MIN_DIAS_QUANTILE = 12     # minimo para activar quantile regression
 
 FEATURE_COLS = [
     "dia_semana", "dia_mes", "semana_mes", "mes", "dia_anio",
@@ -139,8 +142,14 @@ def ensure_tables(engine: sa.Engine) -> None:
            GROUP BY producto
            ORDER BY ingresos_pred_7d DESC""",
 
-        # Vista estado dia actual
+        # Vista estado ultimo dia disponible vs primera prediccion
         """CREATE OR REPLACE VIEW estado_dia_actual AS
+           WITH ref AS (
+               SELECT MAX(fecha) AS ultimo_dia FROM ventas WHERE total > 0
+           ),
+           primera_pred AS (
+               SELECT MIN(fecha_pred) AS fecha_pred FROM predicciones_diarias
+           )
            SELECT
                v.producto,
                ROUND(SUM(v.total)::NUMERIC, 2)        AS ventas_hoy,
@@ -158,9 +167,13 @@ def ensure_tables(engine: sa.Engine) -> None:
                    ELSE 'BAJO_META'
                END AS alerta
            FROM ventas v
+           JOIN ref ON v.fecha = ref.ultimo_dia
+           LEFT JOIN primera_pred pp ON true
            LEFT JOIN predicciones_diarias p
-               ON TRIM(v.producto) = p.producto AND p.fecha_pred = CURRENT_DATE
-           WHERE v.fecha = CURRENT_DATE AND v.total > 0
+               ON TRIM(v.producto) = p.producto AND p.fecha_pred = pp.fecha_pred
+           WHERE v.total > 0
+             AND v.producto IS NOT NULL
+             AND TRIM(v.producto) != ''
            GROUP BY v.producto, p.ingresos_pred, p.ingresos_low, p.ingresos_high
            ORDER BY ventas_hoy DESC""",
     ]
@@ -278,21 +291,22 @@ def entrenar(df_prod: pd.DataFrame, target: str = "ingresos") -> dict | None:
 
     # Validacion con TimeSeriesSplit (no mezcla futuro con pasado)
     n_splits = min(3, max(1, len(df_train) // 5))
-    tscv = TimeSeriesSplit(n_splits=n_splits)
     r2_cv, mae_cv = [], []
 
-    for tr_idx, val_idx in tscv.split(X_sc):
-        if len(tr_idx) < 3 or len(val_idx) < 1:
-            continue
-        gbm_cv = GradientBoostingRegressor(
-            n_estimators=100, max_depth=MAX_DEPTH,
-            learning_rate=LEARNING_RATE, subsample=0.8, random_state=42
-        )
-        gbm_cv.fit(X_sc[tr_idx], y[tr_idx])
-        y_hat = np.maximum(gbm_cv.predict(X_sc[val_idx]), 0)
-        if len(set(y[val_idx])) > 1:
-            r2_cv.append(float(r2_score(y[val_idx], y_hat)))
-        mae_cv.append(float(mean_absolute_error(y[val_idx], y_hat)))
+    if n_splits >= 2:
+        tscv = TimeSeriesSplit(n_splits=n_splits)
+        for tr_idx, val_idx in tscv.split(X_sc):
+            if len(tr_idx) < 3 or len(val_idx) < 1:
+                continue
+            gbm_cv = GradientBoostingRegressor(
+                n_estimators=100, max_depth=MAX_DEPTH,
+                learning_rate=LEARNING_RATE, subsample=0.8, random_state=42
+            )
+            gbm_cv.fit(X_sc[tr_idx], y[tr_idx])
+            y_hat = np.maximum(gbm_cv.predict(X_sc[val_idx]), 0)
+            if len(set(y[val_idx])) > 1:
+                r2_cv.append(float(r2_score(y[val_idx], y_hat)))
+            mae_cv.append(float(mean_absolute_error(y[val_idx], y_hat)))
 
     # Modelo final sobre todos los datos
     gbm = GradientBoostingRegressor(
@@ -306,8 +320,29 @@ def entrenar(df_prod: pd.DataFrame, target: str = "ingresos") -> dict | None:
     mae_final  = float(mean_absolute_error(y, y_pred))
     rmse_final = float(np.sqrt(mean_squared_error(y, y_pred)))
 
+    # Quantile regression para bandas asimétricas reales (P10 / P90)
+    gbm_q10 = gbm_q90 = None
+    if len(df_train) >= MIN_DIAS_QUANTILE and target == "ingresos":
+        try:
+            gbm_q10 = GradientBoostingRegressor(
+                n_estimators=N_ESTIMATORS, max_depth=MAX_DEPTH,
+                learning_rate=LEARNING_RATE, subsample=0.8,
+                loss="quantile", alpha=QUANTILE_LOW, random_state=42
+            )
+            gbm_q10.fit(X_sc, y)
+            gbm_q90 = GradientBoostingRegressor(
+                n_estimators=N_ESTIMATORS, max_depth=MAX_DEPTH,
+                learning_rate=LEARNING_RATE, subsample=0.8,
+                loss="quantile", alpha=QUANTILE_HIGH, random_state=42
+            )
+            gbm_q90.fit(X_sc, y)
+        except Exception:
+            gbm_q10 = gbm_q90 = None  # fallback a CI_FACTOR * MAE
+
     return {
         "model":      gbm,
+        "model_q10":  gbm_q10,
+        "model_q90":  gbm_q90,
         "scaler":     scaler,
         "df_full":    df,
         "r2":         round(float(np.mean(r2_cv))   if r2_cv  else r2_final,  4),
@@ -323,12 +358,14 @@ def pronosticar(resultado: dict, n_dias: int = N_FORECAST_DAYS) -> list[tuple]:
     """
     Genera predicciones para los proximos n_dias dias.
     Retorna lista de tuplas (fecha, pred, low, high).
-    El intervalo de confianza es pred +/- CI_FACTOR * MAE.
+    Si hay modelos quantile (P10/P90) los usa; si no, fallback a CI_FACTOR * MAE.
     """
-    model  = resultado["model"]
-    scaler = resultado["scaler"]
-    mae    = resultado["mae"]
-    df     = resultado["df_full"]
+    model     = resultado["model"]
+    model_q10 = resultado.get("model_q10")
+    model_q90 = resultado.get("model_q90")
+    scaler    = resultado["scaler"]
+    mae       = resultado["mae"]
+    df        = resultado["df_full"]
 
     # Buffer de valores historicos para construir lags de forma recursiva
     buffer = list(df["ingresos"].values.astype(float))
@@ -373,8 +410,16 @@ def pronosticar(resultado: dict, n_dias: int = N_FORECAST_DAYS) -> list[tuple]:
         X_pred = np.array([features], dtype=float)
         X_sc   = scaler.transform(X_pred)
         pred   = max(float(model.predict(X_sc)[0]), 0.0)
-        low    = max(pred - CI_FACTOR * mae, 0.0)
-        high   = pred + CI_FACTOR * mae
+
+        if model_q10 is not None and model_q90 is not None:
+            # Bandas asimétricas reales basadas en quantile regression (P10/P90)
+            low  = max(float(model_q10.predict(X_sc)[0]), 0.0)
+            high = max(float(model_q90.predict(X_sc)[0]), 0.0)
+            low  = min(low,  pred)   # garantizar low <= pred
+            high = max(high, pred)   # garantizar high >= pred
+        else:
+            low  = max(pred - CI_FACTOR * mae, 0.0)
+            high = pred + CI_FACTOR * mae
 
         predicciones.append((fecha_pred, round(pred, 2), round(low, 2), round(high, 2)))
         buffer.append(pred)   # usar la prediccion como lag para el siguiente dia

@@ -1,10 +1,10 @@
 {
-  "title": "CasaMarket — Ventas & Prediccion S9",
+  "title": "CasaMarket — Ventas & Prediccion ML Avanzado",
   "uid": "casamarket-ventas",
   "schemaVersion": 38,
-  "version": 4,
+  "version": 5,
   "refresh": "1m",
-  "time": { "from": "2026-01-01T00:00:00.000Z", "to": "2026-12-31T23:59:59.000Z" },
+  "time": { "from": "now-60d", "to": "now" },
   "timepicker": {},
   "panels": [
 
@@ -110,7 +110,7 @@
       "gridPos": { "x": 0, "y": 29, "w": 24, "h": 8 },
       "datasource": { "type": "postgres", "uid": "casamarket-pg" },
       "targets": [{
-        "rawSql": "SELECT fecha::TEXT AS fecha, TRIM(producto) AS producto, TRIM(marca) AS marca, TRIM(categoria) AS categoria, cantidad, ROUND(total::NUMERIC,2) AS total, TRIM(cliente) AS cliente, TRIM(vendedor) AS vendedor FROM ventas WHERE fecha IS NOT NULL AND total > 0 ORDER BY procesado_ts DESC LIMIT 50",
+        "rawSql": "SELECT fecha::TEXT AS fecha, COALESCE(hora, '-') AS hora, TRIM(producto) AS producto, TRIM(marca) AS marca, TRIM(categoria) AS categoria, cantidad, ROUND(total::NUMERIC,2) AS total, TRIM(cliente) AS cliente, TRIM(vendedor) AS vendedor FROM ventas WHERE fecha IS NOT NULL AND total > 0 ORDER BY procesado_ts DESC LIMIT 50",
         "format": "table", "refId": "A"
       }],
       "options": { "sortBy": [{ "displayName": "fecha", "desc": true }] }
@@ -118,7 +118,7 @@
 
     { "id": 20, "type": "text", "title": "",
       "gridPos": { "x": 0, "y": 37, "w": 24, "h": 2 },
-      "options": { "mode": "markdown", "content": "## Predicciones ML 2026 — Modelo: sklearn LinearRegression | Entrenado con ventas reales CasaMarket (Abr–May 2026)" }
+      "options": { "mode": "markdown", "content": "## Predicciones ML 2026 — Modelo original: sklearn LinearRegression | Referencia historica" }
     },
 
     { "id": 12, "type": "stat", "title": "Ingresos proyectados 2026 — Top 15 productos",
@@ -129,20 +129,20 @@
       "fieldConfig": { "defaults": { "unit": "currencyPEN", "color": { "mode": "fixed", "fixedColor": "semi-dark-green" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "semi-dark-green", "value": null }] } } }
     },
 
-    { "id": 13, "type": "stat", "title": "Producto #1 proyectado (ingresos anuales 2026)",
+    { "id": 13, "type": "stat", "title": "Producto #1 proyectado — mayor ingreso anual 2026",
       "gridPos": { "x": 8, "y": 39, "w": 8, "h": 4 },
       "datasource": { "type": "postgres", "uid": "casamarket-pg" },
-      "targets": [{ "rawSql": "SELECT ROUND(SUM(ingresos_pred)::NUMERIC,2) AS value FROM predicciones_2026 WHERE TRIM(producto)='PEPSI 2000ML'", "format": "table", "refId": "A" }],
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
-      "fieldConfig": { "defaults": { "unit": "currencyPEN", "displayName": "PEPSI 2000ML", "color": { "mode": "fixed", "fixedColor": "yellow" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "yellow", "value": null }] } } }
+      "targets": [{ "rawSql": "SELECT TRIM(producto) AS metric, ROUND(SUM(ingresos_pred)::NUMERIC,2) AS value FROM predicciones_2026 GROUP BY TRIM(producto) ORDER BY value DESC LIMIT 1", "format": "table", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none", "textMode": "value_and_name" },
+      "fieldConfig": { "defaults": { "unit": "currencyPEN", "color": { "mode": "fixed", "fixedColor": "yellow" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "yellow", "value": null }] } } }
     },
 
-    { "id": 14, "type": "stat", "title": "Producto #2 proyectado (ingresos anuales 2026)",
+    { "id": 14, "type": "stat", "title": "Producto #2 proyectado — mayor ingreso anual 2026",
       "gridPos": { "x": 16, "y": 39, "w": 8, "h": 4 },
       "datasource": { "type": "postgres", "uid": "casamarket-pg" },
-      "targets": [{ "rawSql": "SELECT ROUND(SUM(ingresos_pred)::NUMERIC,2) AS value FROM predicciones_2026 WHERE TRIM(producto)='ESCOCESA 2250ml'", "format": "table", "refId": "A" }],
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
-      "fieldConfig": { "defaults": { "unit": "currencyPEN", "displayName": "ESCOCESA 2250ml", "color": { "mode": "fixed", "fixedColor": "light-orange" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "light-orange", "value": null }] } } }
+      "targets": [{ "rawSql": "SELECT TRIM(producto) AS metric, ROUND(SUM(ingresos_pred)::NUMERIC,2) AS value FROM predicciones_2026 GROUP BY TRIM(producto) ORDER BY value DESC LIMIT 1 OFFSET 1", "format": "table", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none", "textMode": "value_and_name" },
+      "fieldConfig": { "defaults": { "unit": "currencyPEN", "color": { "mode": "fixed", "fixedColor": "light-orange" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "light-orange", "value": null }] } } }
     },
 
     { "id": 15, "type": "barchart", "title": "Top 10 Productos — Proyectado 2026 vs Real historico (S/)",
@@ -167,14 +167,14 @@
       "options": { "pieType": "donut", "legend": { "displayMode": "table", "placement": "right" } }
     },
 
-    { "id": 17, "type": "timeseries", "title": "Tendencia mensual proyectada 2026 — Top 4 productos (S/)",
+    { "id": 17, "type": "timeseries", "title": "Tendencia mensual proyectada 2026 — Top 4 productos (LinearRegression)",
       "gridPos": { "x": 0, "y": 53, "w": 24, "h": 9 },
       "datasource": { "type": "postgres", "uid": "casamarket-pg" },
       "targets": [
-        { "rawSql": "SELECT mes::TIMESTAMPTZ AS time, ROUND(ingresos_pred::NUMERIC,2) AS \"PEPSI 2000ML\" FROM predicciones_2026 WHERE TRIM(producto)='PEPSI 2000ML' ORDER BY mes", "format": "time_series", "refId": "A" },
-        { "rawSql": "SELECT mes::TIMESTAMPTZ AS time, ROUND(ingresos_pred::NUMERIC,2) AS \"ESCOCESA 2250ml\" FROM predicciones_2026 WHERE TRIM(producto)='ESCOCESA 2250ml' ORDER BY mes", "format": "time_series", "refId": "B" },
-        { "rawSql": "SELECT mes::TIMESTAMPTZ AS time, ROUND(ingresos_pred::NUMERIC,2) AS \"PILSEN CALLAO 620 ML\" FROM predicciones_2026 WHERE TRIM(producto)='PILSEN CALLAO 620 ML' ORDER BY mes", "format": "time_series", "refId": "C" },
-        { "rawSql": "SELECT mes::TIMESTAMPTZ AS time, ROUND(ingresos_pred::NUMERIC,2) AS \"PEPSI AZUL 355ML\" FROM predicciones_2026 WHERE TRIM(producto)='PEPSI AZUL 355ML' ORDER BY mes", "format": "time_series", "refId": "D" }
+        { "rawSql": "SELECT mes::TIMESTAMPTZ AS time, ROUND(ingresos_pred::NUMERIC,2) AS value FROM predicciones_2026 WHERE TRIM(producto)=(SELECT TRIM(producto) FROM predicciones_2026 GROUP BY producto ORDER BY SUM(ingresos_pred) DESC LIMIT 1) ORDER BY mes", "format": "time_series", "refId": "A" },
+        { "rawSql": "SELECT mes::TIMESTAMPTZ AS time, ROUND(ingresos_pred::NUMERIC,2) AS value FROM predicciones_2026 WHERE TRIM(producto)=(SELECT TRIM(producto) FROM predicciones_2026 GROUP BY producto ORDER BY SUM(ingresos_pred) DESC LIMIT 1 OFFSET 1) ORDER BY mes", "format": "time_series", "refId": "B" },
+        { "rawSql": "SELECT mes::TIMESTAMPTZ AS time, ROUND(ingresos_pred::NUMERIC,2) AS value FROM predicciones_2026 WHERE TRIM(producto)=(SELECT TRIM(producto) FROM predicciones_2026 GROUP BY producto ORDER BY SUM(ingresos_pred) DESC LIMIT 1 OFFSET 2) ORDER BY mes", "format": "time_series", "refId": "C" },
+        { "rawSql": "SELECT mes::TIMESTAMPTZ AS time, ROUND(ingresos_pred::NUMERIC,2) AS value FROM predicciones_2026 WHERE TRIM(producto)=(SELECT TRIM(producto) FROM predicciones_2026 GROUP BY producto ORDER BY SUM(ingresos_pred) DESC LIMIT 1 OFFSET 3) ORDER BY mes", "format": "time_series", "refId": "D" }
       ],
       "fieldConfig": { "defaults": { "unit": "currencyPEN", "color": { "mode": "palette-classic" } } },
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } }
@@ -189,6 +189,362 @@
       }],
       "options": { "sortBy": [{ "displayName": "Proyectado S/", "desc": true }] },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [{ "matcher": { "id": "byName", "options": "Proyectado S/" }, "properties": [{ "id": "unit", "value": "currencyPEN" }] }] }
+    },
+
+    { "id": 40, "type": "text", "title": "",
+      "gridPos": { "x": 0, "y": 71, "w": 24, "h": 3 },
+      "options": { "mode": "markdown", "content": "## ML Avanzado — GradientBoosting | IsolationForest | KMeans RFM\n\nModelos re-entrenados automaticamente cada **30 minutos** con todos los datos nuevos de ventas.\nPredicciones diarias con intervalo de confianza | Anomalias en tiempo real | Segmentacion de clientes" }
+    },
+
+    { "id": 30, "type": "barchart", "title": "Top 5 Productos — Prediccion proximos 7 dias (GradientBoosting)",
+      "gridPos": { "x": 0, "y": 74, "w": 12, "h": 10 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT producto, ROUND(ingresos_pred_7d::NUMERIC,2) AS \"Ingresos Pred S/\", ROUND(ingresos_low_7d::NUMERIC,2) AS \"Banda Inferior\", ROUND(ingresos_high_7d::NUMERIC,2) AS \"Banda Superior\" FROM ranking_proximos_7d LIMIT 5",
+        "format": "table", "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "currencyPEN" } },
+      "options": { "orientation": "horizontal", "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+
+    { "id": 31, "type": "barchart", "title": "Ranking Vendedores — Prediccion proxima semana (GradientBoosting)",
+      "gridPos": { "x": 12, "y": 74, "w": 12, "h": 10 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT vendedor, ROUND(ingresos_pred::NUMERIC,2) AS \"Ingresos Pred S/\", ROUND(ingresos_low::NUMERIC,2) AS \"Banda Inferior\", ROUND(ingresos_high::NUMERIC,2) AS \"Banda Superior\" FROM predicciones_vendedor WHERE semana_inicio = DATE_TRUNC('week', CURRENT_DATE + INTERVAL '7 days')::DATE ORDER BY ingresos_pred DESC LIMIT 10",
+        "format": "table", "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "currencyPEN" } },
+      "options": { "orientation": "horizontal", "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+
+    { "id": 32, "type": "timeseries", "title": "Predicho vs Real diario — Top 5 productos (con banda de confianza)",
+      "gridPos": { "x": 0, "y": 84, "w": 24, "h": 10 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT fecha_pred::TIMESTAMPTZ AS time, ROUND(ingresos_pred::NUMERIC,2) AS \"Prediccion\", ROUND(ingresos_low::NUMERIC,2) AS \"Banda Inferior\", ROUND(ingresos_high::NUMERIC,2) AS \"Banda Superior\" FROM predicciones_diarias WHERE producto = (SELECT producto FROM ranking_proximos_7d WHERE ranking=1 LIMIT 1) ORDER BY fecha_pred",
+          "format": "time_series", "refId": "A"
+        },
+        {
+          "rawSql": "SELECT fecha::TIMESTAMPTZ AS time, ROUND(SUM(total)::NUMERIC,2) AS \"Real\" FROM ventas WHERE TRIM(producto)=(SELECT producto FROM ranking_proximos_7d WHERE ranking=1 LIMIT 1) AND total > 0 GROUP BY fecha ORDER BY fecha",
+          "format": "time_series", "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "currencyPEN", "color": { "mode": "palette-classic" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Banda Inferior" }, "properties": [{ "id": "custom.fillBelowTo", "value": "Banda Superior" }, { "id": "custom.lineWidth", "value": 0 }, { "id": "color", "value": { "mode": "fixed", "fixedColor": "transparent" } }] },
+          { "matcher": { "id": "byName", "options": "Banda Superior" }, "properties": [{ "id": "custom.fillOpacity", "value": 15 }, { "id": "custom.lineWidth", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "Real" }, "properties": [{ "id": "custom.lineWidth", "value": 2 }, { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] }
+        ]
+      },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+
+    { "id": 33, "type": "table", "title": "Alertas Streaming en Vivo — Estado del dia (Real vs Prediccion Diaria)",
+      "gridPos": { "x": 0, "y": 94, "w": 14, "h": 9 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT producto, ROUND(ventas_hoy::NUMERIC,2) AS \"Ventas Hoy S/\", ROUND(prediccion_hoy::NUMERIC,2) AS \"Prediccion S/\", ROUND(pct_meta::NUMERIC,1) AS \"% Meta\", alerta AS \"Estado\" FROM estado_dia_actual ORDER BY pct_meta DESC LIMIT 20",
+        "format": "table", "refId": "A"
+      }],
+      "options": { "sortBy": [{ "displayName": "% Meta", "desc": true }] },
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Ventas Hoy S/" }, "properties": [{ "id": "unit", "value": "currencyPEN" }] },
+          { "matcher": { "id": "byName", "options": "Prediccion S/" }, "properties": [{ "id": "unit", "value": "currencyPEN" }] },
+          { "matcher": { "id": "byName", "options": "Estado" }, "properties": [
+            { "id": "custom.displayMode", "value": "color-background" },
+            { "id": "mappings", "value": [
+              { "type": "value", "options": { "SOBRE_META": { "color": "green",      "index": 0 } } },
+              { "type": "value", "options": { "EN_META":    { "color": "blue",       "index": 1 } } },
+              { "type": "value", "options": { "EN_RIESGO":  { "color": "orange",     "index": 2 } } },
+              { "type": "value", "options": { "BAJO_META":  { "color": "dark-red",   "index": 3 } } }
+            ]}
+          ]}
+        ]
+      }
+    },
+
+    { "id": 34, "type": "table", "title": "Anomalias Detectadas — IsolationForest (ultimos 7 dias)",
+      "gridPos": { "x": 14, "y": 94, "w": 10, "h": 9 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT fecha::TEXT AS fecha, TRIM(producto) AS producto, ROUND(ventas_reales::NUMERIC,2) AS \"Ventas S/\", ROUND(desviacion_pct::NUMERIC,1) AS \"Desv %\", tipo AS \"Tipo\" FROM anomalias_detectadas ORDER BY detectado_en DESC LIMIT 20",
+        "format": "table", "refId": "A"
+      }],
+      "options": { "sortBy": [{ "displayName": "fecha", "desc": true }] },
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Ventas S/" }, "properties": [{ "id": "unit", "value": "currencyPEN" }] },
+          { "matcher": { "id": "byName", "options": "Tipo" }, "properties": [
+            { "id": "custom.displayMode", "value": "color-background" },
+            { "id": "mappings", "value": [
+              { "type": "value", "options": { "ALTA_VENTA":    { "color": "green",    "index": 0 } } },
+              { "type": "value", "options": { "CAIDA_VENTAS":  { "color": "dark-red", "index": 1 } } },
+              { "type": "value", "options": { "INUSUAL":       { "color": "orange",   "index": 2 } } }
+            ]}
+          ]}
+        ]
+      }
+    },
+
+    { "id": 35, "type": "piechart", "title": "Segmentacion de Clientes — KMeans RFM (VIP / Regular / En Riesgo)",
+      "gridPos": { "x": 0, "y": 103, "w": 8, "h": 9 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT segmento, COUNT(*) AS clientes FROM segmentos_clientes GROUP BY segmento ORDER BY clientes DESC",
+        "format": "table", "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": {
+        "pieType": "donut",
+        "legend": { "displayMode": "table", "placement": "right" },
+        "overrideTooltip": true
+      }
+    },
+
+    { "id": 36, "type": "table", "title": "Top 10 Clientes VIP (mayor valor monetario)",
+      "gridPos": { "x": 8, "y": 103, "w": 16, "h": 9 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT TRIM(cliente) AS cliente, segmento AS \"Segmento\", recencia_dias AS \"Recencia (dias)\", frecuencia AS \"# Compras\", ROUND(valor_monetario::NUMERIC,2) AS \"Total S/\", ROUND(ticket_promedio::NUMERIC,2) AS \"Ticket S/\" FROM segmentos_clientes ORDER BY valor_monetario DESC LIMIT 10",
+        "format": "table", "refId": "A"
+      }],
+      "options": { "sortBy": [{ "displayName": "Total S/", "desc": true }] },
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Total S/" }, "properties": [{ "id": "unit", "value": "currencyPEN" }] },
+          { "matcher": { "id": "byName", "options": "Ticket S/" }, "properties": [{ "id": "unit", "value": "currencyPEN" }] },
+          { "matcher": { "id": "byName", "options": "Segmento" }, "properties": [
+            { "id": "custom.displayMode", "value": "color-background" },
+            { "id": "mappings", "value": [
+              { "type": "value", "options": { "VIP":       { "color": "gold",      "index": 0 } } },
+              { "type": "value", "options": { "Regular":   { "color": "blue",      "index": 1 } } },
+              { "type": "value", "options": { "En Riesgo": { "color": "dark-red",  "index": 2 } } }
+            ]}
+          ]}
+        ]
+      }
+    },
+
+    { "id": 37, "type": "barchart", "title": "Pronostico Unidades — Top 10 productos proximos 7 dias",
+      "gridPos": { "x": 0, "y": 112, "w": 14, "h": 9 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT producto, ROUND(SUM(unidades_pred)::NUMERIC,0) AS \"Unidades Pred\" FROM predicciones_diarias WHERE fecha_pred BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days' GROUP BY producto ORDER BY SUM(unidades_pred) DESC LIMIT 10",
+        "format": "table", "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "orientation": "horizontal" }
+    },
+
+    { "id": 38, "type": "table", "title": "Calidad del Modelo por Producto — R2, MAE, RMSE (GradientBoosting)",
+      "gridPos": { "x": 14, "y": 112, "w": 10, "h": 9 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT producto, ROUND(r2::NUMERIC,3) AS \"R2\", ROUND(mae::NUMERIC,2) AS \"MAE S/\", ROUND(rmse::NUMERIC,2) AS \"RMSE S/\", n_muestras AS \"N dias\", TO_CHAR(entrenado_en AT TIME ZONE 'America/Lima', 'HH24:MI') AS \"Actualizado\" FROM model_metadata WHERE modelo='productos' ORDER BY r2 DESC LIMIT 15",
+        "format": "table", "refId": "A"
+      }],
+      "options": { "sortBy": [{ "displayName": "R2", "desc": true }] },
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "MAE S/" },  "properties": [{ "id": "unit", "value": "currencyPEN" }] },
+          { "matcher": { "id": "byName", "options": "RMSE S/" }, "properties": [{ "id": "unit", "value": "currencyPEN" }] },
+          { "matcher": { "id": "byName", "options": "R2" }, "properties": [
+            { "id": "custom.displayMode", "value": "color-background" },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+              { "color": "dark-red", "value": null },
+              { "color": "orange",   "value": 0.5  },
+              { "color": "green",    "value": 0.7  }
+            ]}}
+          ]}
+        ]
+      }
+    },
+
+    { "id": 39, "type": "barchart", "title": "Ventas Promedio por Dia de Semana",
+      "gridPos": { "x": 0, "y": 121, "w": 24, "h": 9 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT CASE EXTRACT(DOW FROM fecha) WHEN 0 THEN '0-Dom' WHEN 1 THEN '1-Lun' WHEN 2 THEN '2-Mar' WHEN 3 THEN '3-Mie' WHEN 4 THEN '4-Jue' WHEN 5 THEN '5-Vie' WHEN 6 THEN '6-Sab' END AS dia_semana, ROUND(SUM(total)::NUMERIC,2) AS \"Ingresos S/\", COUNT(*) AS \"Transacciones\" FROM ventas WHERE fecha IS NOT NULL AND total > 0 GROUP BY EXTRACT(DOW FROM fecha) ORDER BY EXTRACT(DOW FROM fecha)",
+        "format": "table", "refId": "A"
+      }],
+      "fieldConfig": {
+        "defaults": { "unit": "currencyPEN" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Transacciones" }, "properties": [{ "id": "unit", "value": "short" }] }
+        ]
+      },
+      "options": {
+        "orientation": "auto",
+        "xTickLabelRotation": 0,
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      }
+    },
+
+    { "id": 40, "type": "row", "title": "Pronostico Julio 2026 — Bandas de Confianza P10 / P90",
+      "gridPos": { "x": 0, "y": 130, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+
+    { "id": 41, "type": "stat", "title": "Proyeccion Central Julio S/",
+      "gridPos": { "x": 0, "y": 131, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{ "rawSql": "SELECT ROUND(SUM(ingresos_pred)::NUMERIC,0) AS value FROM predicciones_mes_siguiente WHERE mes = DATE_TRUNC('month', CURRENT_DATE + INTERVAL '1 month')::DATE", "format": "table", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none", "textMode": "auto" },
+      "fieldConfig": { "defaults": { "unit": "currencyPEN", "color": { "mode": "fixed", "fixedColor": "blue" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } } }
+    },
+
+    { "id": 42, "type": "stat", "title": "Banda Pesimista P10 S/",
+      "gridPos": { "x": 6, "y": 131, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{ "rawSql": "SELECT ROUND(SUM(ingresos_low)::NUMERIC,0) AS value FROM predicciones_mes_siguiente WHERE mes = DATE_TRUNC('month', CURRENT_DATE + INTERVAL '1 month')::DATE", "format": "table", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none", "textMode": "auto" },
+      "fieldConfig": { "defaults": { "unit": "currencyPEN", "color": { "mode": "fixed", "fixedColor": "orange" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] } } }
+    },
+
+    { "id": 43, "type": "stat", "title": "Banda Optimista P90 S/",
+      "gridPos": { "x": 12, "y": 131, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{ "rawSql": "SELECT ROUND(SUM(ingresos_high)::NUMERIC,0) AS value FROM predicciones_mes_siguiente WHERE mes = DATE_TRUNC('month', CURRENT_DATE + INTERVAL '1 month')::DATE", "format": "table", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none", "textMode": "auto" },
+      "fieldConfig": { "defaults": { "unit": "currencyPEN", "color": { "mode": "fixed", "fixedColor": "green" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } } }
+    },
+
+    { "id": 44, "type": "stat", "title": "Producto Estrella Julio",
+      "gridPos": { "x": 18, "y": 131, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{ "rawSql": "SELECT producto AS metric, ROUND(ingresos_pred::NUMERIC,0) AS value FROM predicciones_mes_siguiente WHERE mes = DATE_TRUNC('month', CURRENT_DATE + INTERVAL '1 month')::DATE ORDER BY ingresos_pred DESC LIMIT 1", "format": "table", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none", "textMode": "value_and_name" },
+      "fieldConfig": { "defaults": { "unit": "currencyPEN", "color": { "mode": "fixed", "fixedColor": "purple" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] } } }
+    },
+
+    { "id": 45, "type": "timeseries", "title": "Historico Real + Forecast Julio con Banda P10 — P90",
+      "gridPos": { "x": 0, "y": 135, "w": 24, "h": 12 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [
+        {
+          "rawSql": "SELECT fecha::TIMESTAMPTZ AS time, ROUND(SUM(total)::NUMERIC,2) AS \"Ventas Real S/\" FROM ventas WHERE total > 0 AND fecha >= '2026-04-27' GROUP BY fecha ORDER BY fecha",
+          "format": "time_series", "refId": "A"
+        },
+        {
+          "rawSql": "SELECT time, pred_total AS \"Prediccion S/\" FROM forecast_diario_total WHERE time > NOW() ORDER BY time",
+          "format": "time_series", "refId": "B"
+        },
+        {
+          "rawSql": "SELECT time, high_total AS \"Banda Superior P90\" FROM forecast_diario_total WHERE time > NOW() ORDER BY time",
+          "format": "time_series", "refId": "C"
+        },
+        {
+          "rawSql": "SELECT time, low_total AS \"Banda Inferior P10\" FROM forecast_diario_total WHERE time > NOW() ORDER BY time",
+          "format": "time_series", "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "currencyPEN" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Ventas Real S/" },
+            "properties": [{ "id": "custom.lineWidth", "value": 2 }, { "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }] },
+          { "matcher": { "id": "byName", "options": "Prediccion S/" },
+            "properties": [{ "id": "custom.lineWidth", "value": 2 }, { "id": "custom.lineStyle", "value": { "fill": "dash" } }, { "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } }] },
+          { "matcher": { "id": "byName", "options": "Banda Superior P90" },
+            "properties": [{ "id": "custom.lineWidth", "value": 1 }, { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }, { "id": "custom.fillBelowTo", "value": "Banda Inferior P10" }, { "id": "custom.fillOpacity", "value": 15 }] },
+          { "matcher": { "id": "byName", "options": "Banda Inferior P10" },
+            "properties": [{ "id": "custom.lineWidth", "value": 1 }, { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] }
+        ]
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      }
+    },
+
+    { "id": 46, "type": "barchart", "title": "Top 15 Productos — Proyeccion Julio 2026 (con Bandas)",
+      "gridPos": { "x": 0, "y": 147, "w": 15, "h": 11 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT producto, pred_mes_sig AS \"Proyectado S/\", banda_inf AS \"Minimo P10\", banda_sup AS \"Maximo P90\" FROM forecast_top_productos_mes LIMIT 15",
+        "format": "table", "refId": "A"
+      }],
+      "fieldConfig": {
+        "defaults": { "unit": "currencyPEN" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Proyectado S/" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }] },
+          { "matcher": { "id": "byName", "options": "Minimo P10" },     "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
+          { "matcher": { "id": "byName", "options": "Maximo P90" },     "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] }
+        ]
+      },
+      "options": {
+        "orientation": "horizontal",
+        "xTickLabelRotation": 0,
+        "groupWidth": 0.7,
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      }
+    },
+
+    { "id": 47, "type": "table", "title": "Desglose Forecast Julio 2026 — P10 / Central / P90",
+      "gridPos": { "x": 15, "y": 147, "w": 9, "h": 11 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{
+        "rawSql": "SELECT producto AS \"Producto\", pred_mes_sig AS \"Central S/\", banda_inf AS \"P10 S/\", banda_sup AS \"P90 S/\", cobertura_pct AS \"Cobertura %\", COALESCE(cambio_pct::TEXT || '%', '-') AS \"Cambio vs Actual\" FROM forecast_top_productos_mes LIMIT 20",
+        "format": "table", "refId": "A"
+      }],
+      "options": { "sortBy": [{ "displayName": "Central S/", "desc": true }] },
+      "fieldConfig": {
+        "defaults": { "unit": "currencyPEN" },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Cobertura %" }, "properties": [
+            { "id": "unit", "value": "percent" },
+            { "id": "custom.displayMode", "value": "color-background" },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+              { "color": "red",    "value": null },
+              { "color": "orange", "value": 50   },
+              { "color": "green",  "value": 70   }
+            ]}}
+          ]},
+          { "matcher": { "id": "byName", "options": "Cambio vs Actual" }, "properties": [{ "id": "unit", "value": "short" }] }
+        ]
+      }
+    },
+
+    { "id": 48, "type": "stat", "title": "Cobertura Promedio Banda (%)",
+      "gridPos": { "x": 0, "y": 158, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{ "rawSql": "SELECT ROUND(AVG(cobertura_pct)::NUMERIC,1) AS value FROM predicciones_mes_siguiente WHERE mes = DATE_TRUNC('month', CURRENT_DATE + INTERVAL '1 month')::DATE", "format": "table", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "mode": "absolute", "steps": [
+        { "color": "red", "value": null }, { "color": "orange", "value": 50 }, { "color": "green", "value": 70 }
+      ]}}}
+    },
+
+    { "id": 49, "type": "stat", "title": "Productos en Forecast Julio",
+      "gridPos": { "x": 6, "y": 158, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{ "rawSql": "SELECT COUNT(DISTINCT producto) AS value FROM predicciones_mes_siguiente WHERE mes = DATE_TRUNC('month', CURRENT_DATE + INTERVAL '1 month')::DATE", "format": "table", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "blue" } } }
+    },
+
+    { "id": 50, "type": "stat", "title": "Amplitud Media Banda S/ (P90 - P10)",
+      "gridPos": { "x": 12, "y": 158, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{ "rawSql": "SELECT ROUND(AVG(band_width)::NUMERIC,0) AS value FROM predicciones_mes_siguiente WHERE mes = DATE_TRUNC('month', CURRENT_DATE + INTERVAL '1 month')::DATE", "format": "table", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "currencyPEN", "color": { "mode": "fixed", "fixedColor": "yellow" } } }
+    },
+
+    { "id": 51, "type": "stat", "title": "Ultimo Reentrenamiento",
+      "gridPos": { "x": 18, "y": 158, "w": 6, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "casamarket-pg" },
+      "targets": [{ "rawSql": "SELECT TO_CHAR(MAX(entrenado_en) AT TIME ZONE 'America/Lima', 'HH24:MI') AS metric, 0 AS value FROM predicciones_mes_siguiente WHERE mes = DATE_TRUNC('month', CURRENT_DATE + INTERVAL '1 month')::DATE", "format": "table", "refId": "A" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none", "textMode": "name" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "teal" } } }
     }
 
   ]
