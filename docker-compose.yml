@@ -157,6 +157,12 @@ services:
           --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1 \
           --master local[2] \
           /home/jovyan/app/job_documentos.py
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "job_documentos"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     volumes:
       - ./spark_streaming:/home/jovyan/app
       - ./output:/home/jovyan/output
@@ -180,6 +186,12 @@ services:
           --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.postgresql:postgresql:42.7.3,mysql:mysql-connector-java:8.0.33 \
           --master local[2] \
           /home/jovyan/app/job_ventas.py
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "job_ventas"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     volumes:
       - ./spark_streaming:/home/jovyan/app
       - ./output:/home/jovyan/output
@@ -293,6 +305,26 @@ services:
       - ec-kafka-dev-net
     restart: unless-stopped
 
+  # ── ML Trainer: re-entrenamiento automático cada 30 min ──────────────────────
+  # Ejecuta los 4 modelos: GBM productos, GBM vendedores, IsolationForest, KMeans
+  ml-trainer:
+    build:
+      context: .
+      dockerfile: ml/Dockerfile.web     # reutiliza la imagen Python con scikit-learn
+    image: casamarket-ml-web:latest
+    container_name: ml-trainer
+    command: python /app/ml/trainer_main.py
+    volumes:
+      - ./ml:/app/ml
+    environment:
+      DATABASE_URL: "postgresql://casamarket:casamarket@postgres:5432/casamarket"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ec-kafka-dev-net
+    restart: unless-stopped
+
   # ── Web ML: página de predicciones IFERSAN (FastAPI + Chart.js) ─────────────
   ml-web:
     build:
@@ -320,10 +352,17 @@ services:
     entrypoint: ["bash", "-c"]
     command:
       - |
+        pip install --quiet psycopg2-binary sqlalchemy pandas && \
         spark-submit \
           --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.postgresql:postgresql:42.7.3 \
           --master local[2] \
           /home/jovyan/app/job_ml_streaming.py
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "job_ml_streaming"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
     volumes:
       - ./spark_streaming:/home/jovyan/app
       - ./output:/home/jovyan/output
