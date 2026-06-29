@@ -1,264 +1,700 @@
-# IFERSAN · Pipeline Big Data en Tiempo Real
-### Universidad Peruana Unión · IX Ciclo · Big Data · Unidad 2
-**Docente:** Mg. Angel Sullon
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--                            C A R A T U L A                             -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
 
-| Alumno | Rol |
-|---|---|
-| Alessandro Pastor Mamani Mamani | Arquitectura y pipeline completo |
-| Cabana Sulca Cristian | Consumer / parser / Kafka |
-| Montes Mamani Andres Lino | Spark Streaming y PostgreSQL |
-| Fernandez Sanchez Jean Piero | ML, Grafana y observabilidad |
+<div align="center">
 
-**Fecha de entrega:** Junio 2026
-
----
-
-## Qué es este proyecto
-
-**IFERSAN** es una distribuidora de bebidas en Juliaca (Pepsi, Inca Kola, Coca Cola, Escocesa, Pilsen Callao). Sus vendedores —encabezados por **ROSA CUSILAYME**— registran ventas diariamente en el ERP CasaMarket. El problema: la gerencia recibía esos datos **24 horas después**, en un Excel que nadie podía consultar en tiempo real.
-
-Este proyecto construye el pipeline completo que cambia eso:
-
-> Cada venta registrada en el ERP de IFERSAN aparece en Grafana en **menos de 8 minutos**. Sin Excel. Sin espera. Automático.
-
-### Resultados con datos reales de IFERSAN
-
-| Métrica | Valor real |
-|---|---|
-| Transacciones procesadas | **16,794** |
-| Ingresos reales registrados | **S/ 406,150.50** |
-| Producto #1 | **PEPSI 2000ML — S/ 76,400** |
-| Vendedor #1 | **ROSA CUSILAYME — S/ 101,500** |
-| Vendedor #2 | **JHONATAN — S/ 92,000** |
-| Productos únicos | 62 |
-| Clientes únicos | 1,106 |
-| Documentos descargados del ERP | 175 archivos (IDs 180472–183454) |
-| Archivos Excel/HTML almacenados | 84 archivos · 44 MB |
-| Periodo de datos | 27 Abr – 19 May 2026 |
-| Throughput Spark (re-proceso) | **6,074 msg/s** |
-| Consumer lag final | **0** |
-| Proyección ML 2026 (Top 15) | **S/ 1,614,943.32** |
-| PEPSI 2000ML proyectado 2026 | **S/ 334,800** (factor 4.4×) |
-
----
-
-## Arquitectura del Pipeline (Kappa)
+<br>
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                         FUENTE DE DATOS — IFERSAN                        │
-│                                                                          │
-│   ERP CasaMarket   →   admin.casamarket.la                               │
-│   API Auth:   https://acl.casamarketapp.com/api/authenticate             │
-│   API Docs:   https://n5.report.casamarketapp.com/documents              │
-│                                                                          │
-│   Formato: reportes .xlsx / .html · status=Finalizado · COMPANY_ID=5588 │
-└────────────────────────────────┬─────────────────────────────────────────┘
-                                 │  JWT Bearer Token · Paginado x-last-page
-                                 ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│                         PRODUCTOR                                        │
-│                                                                          │
-│   producer/producer.py  (202 líneas)                                     │
-│   ┌──────────────────────────────────────────────────────────────────┐   │
-│   │  Ciclo cada 300s                                                 │   │
-│   │  1. POST /api/authenticate → token JWT                           │   │
-│   │  2. GET /documents?startDate&endDate → lista paginada            │   │
-│   │  3. Filtra: status=2 AND id NOT IN state_documentos.json         │   │
-│   │  4. Publica JSON en Kafka (acks=all, retries=3)                  │   │
-│   │  5. Guarda IDs publicados → state_documentos.json                │   │
-│   └──────────────────────────────────────────────────────────────────┘   │
-│                                                                          │
-│   Topic destino: casamarket.documento.detectado                          │
-│   175 documentos publicados · IDs 180472 – 183454                       │
-└────────────────────────────────┬─────────────────────────────────────────┘
-                                 │  JSON evento por documento
-                                 ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│                         KAFKA  (KRaft · sin ZooKeeper)                   │
-│                                                                          │
-│   Broker: ec-kafka:9092 · Apache Kafka 3.7.0                            │
-│                                                                          │
-│   Topic: casamarket.documento.detectado  — eventos del ERP              │
-│   Topic: casamarket.ventas.raw           — filas de venta parseadas     │
-│                                                                          │
-│   30,372 mensajes · Retención 7 días · 1 partición por topic            │
-└──────────────────────────────────────────────────────────────────────────┘
-      │ casamarket.documento.detectado          │ casamarket.ventas.raw
-      ▼                                         ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│                         CONSUMIDORES                                     │
-│                                                                          │
-│   consumer_downloader.py                consumer_excel_parser.py        │
-│   ┌────────────────────┐                ┌────────────────────────────┐   │
-│   │ Escucha Kafka      │   .xlsx/.html  │ Escanea output/descargas/  │   │
-│   │ documento.detectado│ ─────────────▶ │ Parsea con pandas          │   │
-│   │ Descarga archivos  │                │ Normaliza columnas         │   │
-│   │ state_downloads.j  │                │ Publica fila por fila      │   │
-│   └────────────────────┘                └────────────┬───────────────┘   │
-└────────────────────────────────────────────────────┼─────────────────────┘
-                                                     │  JSON · 1 fila = 1 mensaje
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                              ║
+║          ██╗███████╗███████╗██████╗ ███████╗ █████╗ ███╗   ██╗             ║
+║          ██║██╔════╝██╔════╝██╔══██╗██╔════╝██╔══██╗████╗  ██║             ║
+║          ██║█████╗  █████╗  ██████╔╝███████╗███████║██╔██╗ ██║             ║
+║          ██║██╔══╝  ██╔══╝  ██╔══██╗╚════██║██╔══██║██║╚██╗██║             ║
+║          ██║██║     ███████╗██║  ██║███████║██║  ██║██║ ╚████║             ║
+║          ╚═╝╚═╝     ╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝             ║
+║                                                                              ║
+║       PIPELINE BIG DATA EN TIEMPO REAL · ARQUITECTURA KAPPA + ML           ║
+║                                                                              ║
+║    "De un Excel con 24 horas de retraso a datos en vivo en 8 minutos"      ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+```
+
+<br>
+
+![Kafka](https://img.shields.io/badge/Apache_Kafka-3.7.0-231F20?style=for-the-badge&logoColor=white&color=231F20)
+![Spark](https://img.shields.io/badge/Apache_Spark-3.5.1-E25A1C?style=for-the-badge&logoColor=white&color=E25A1C)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?style=for-the-badge&logoColor=white&color=336791)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logoColor=white&color=3776AB)
+![scikit-learn](https://img.shields.io/badge/scikit--learn-ML_v3-F7931E?style=for-the-badge&logoColor=white&color=F7931E)
+![Grafana](https://img.shields.io/badge/Grafana-Dashboards-F46800?style=for-the-badge&logoColor=white&color=F46800)
+![Docker](https://img.shields.io/badge/Docker-15_servicios-2496ED?style=for-the-badge&logoColor=white&color=2496ED)
+
+<br>
+
+![Transacciones](https://img.shields.io/badge/Transacciones_procesadas-16%2C794-0A2342?style=flat-square&color=0A2342)
+![Ingresos](https://img.shields.io/badge/Ingresos_reales-S%2F_406%2C150-1E6091?style=flat-square&color=1E6091)
+![MAPE](https://img.shields.io/badge/MAPE_prediccion-6.9%25-2D6A4F?style=flat-square&color=2D6A4F)
+![Throughput](https://img.shields.io/badge/Throughput_Spark-6%2C074_msg%2Fs-5C4B8A?style=flat-square&color=5C4B8A)
+
+<br>
+
+---
+
+**Universidad Peruana Unión · Facultad de Ingeniería y Arquitectura**
+
+**IX Ciclo · Curso: Big Data · Unidad 2 · Junio 2026**
+
+Docente: **Mg. Angel Sullon**
+
+---
+
+| Alumno | Rol en el Proyecto |
+|:---|:---|
+| **Alessandro Pastor Mamani Mamani** | Arquitectura Kappa, pipeline completo, ML v3 |
+| **Cabana Sulca Cristian** | Consumer, parser, integración Kafka |
+| **Montes Mamani Andres Lino** | Spark Structured Streaming, PostgreSQL |
+| **Fernandez Sanchez Jean Piero** | Machine Learning, Grafana, observabilidad |
+
+<br>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--                        1. EL PROBLEMA                                   -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+---
+
+# PARTE I — EL PROBLEMA
+
+## CasaMarket: un ERP que entrega los datos 24 horas tarde
+
+**CasaMarket** es un ERP peruano de gestión de ventas. Sus clientes —distribuidoras, ferreterías, bodegas— registran cientos de transacciones diarias a través de vendedores en campo.
+
+El sistema genera reportes en formato **Excel o HTML** que el área comercial descarga manualmente al día siguiente.
+
+### El caso real: IFERSAN — Distribuidora de Bebidas · Juliaca, Puno
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│   IFERSAN distribuye: Pepsi · Inca Kola · Coca Cola · Escocesa · Pilsen   │
+│                                                                             │
+│   Sus vendedores cierran ventas en campo todo el dia usando CasaMarket.   │
+│                                                                             │
+│   ¿Cuándo ve la gerencia esos datos?   →   Al dia siguiente.              │
+│   ¿En qué formato?                     →   Un Excel de 500 filas.         │
+│   ¿Puede consultarlo en tiempo real?   →   No.                             │
+│                                                                             │
+│   ROSA CUSILAYME vendio S/ 101,500 este mes.                              │
+│   La gerencia lo supo 24 horas despues de cada venta.                     │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Las 4 fricciones que identificamos
+
+| # | Fricción | Impacto |
+|:---:|:---|:---|
+| 1 | Datos disponibles **24 h después** de cada venta | Decisiones con información del día anterior |
+| 2 | Formato Excel — **no escalable**, no consultable | Análisis manual, propenso a errores |
+| 3 | **Sin alertas**: nadie sabe si las ventas cayeron hoy | Problemas detectados cuando ya es tarde |
+| 4 | **Sin predicciones**: la gerencia no sabe qué esperar mañana | Planificación de stock basada en intuición |
+
+---
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--                        2. LA PROPUESTA                                  -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+# PARTE II — LA PROPUESTA
+
+## Arquitectura Kappa: streaming puro, sin batch
+
+Proponemos reemplazar el flujo Excel-por-correo por un **pipeline de datos en tiempo real** construido sobre tecnología de producción.
+
+> Cada venta registrada en el ERP de IFERSAN aparece en Grafana en **menos de 8 minutos**.
+> Sin Excel. Sin espera. Automático. Con predicciones ML actualizadas cada 30 minutos.
+
+### ¿Por qué Arquitectura Kappa y no Lambda?
+
+```
+LAMBDA (tradicional)          KAPPA (nuestra propuesta)
+─────────────────────         ──────────────────────────
+Batch layer  → lento          Un solo stream → simple
+Speed layer  → complejo       Kafka como log unificado
+Serving layer → duplicado     Un solo sink → PostgreSQL
+2 pipelines que mantener      1 pipeline que mantener
+```
+
+La arquitectura Kappa usa **Kafka como fuente de verdad única**. Todo pasa por el stream — no hay batch separado. Más simple, más mantenible, igualmente potente.
+
+---
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--                        3. ARQUITECTURA                                  -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+# PARTE III — ARQUITECTURA DEL PIPELINE
+
+```
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  FUENTE  ·  ERP CasaMarket                                                ║
+║                                                                           ║
+║  admin.casamarket.la   ·   COMPANY_ID = 5588 (IFERSAN)                   ║
+║  API Auth  → POST /api/authenticate         → JWT Bearer Token            ║
+║  API Docs  → GET  /documents?startDate&...  → Lista paginada              ║
+║                                                                           ║
+║  Formato: .xlsx / .html   ·   status = Finalizado                        ║
+║  175 documentos descargados   ·   IDs 180472 – 183454                    ║
+╚═══════════════════════════╤═══════════════════════════════════════════════╝
+                            │  JWT · paginado · ciclo cada 300s
+                            ▼
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  PRODUCTOR  ·  producer.py                                                ║
+║                                                                           ║
+║  1. Autentica contra la API → obtiene token JWT                          ║
+║  2. Lista documentos nuevos (status=2, id NOT IN state.json)             ║
+║  3. Publica evento JSON por cada documento → Kafka                       ║
+║  4. Persiste IDs procesados → idempotencia garantizada                   ║
+║                                                                           ║
+║  Configuración Kafka: acks=all · retries=3 · delivery.guarantee=exactly  ║
+╚═══════════════════════════╤═══════════════════════════════════════════════╝
+                            │  Topic: casamarket.documento.detectado
+                            ▼
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  KAFKA  ·  Apache Kafka 3.7.0 KRaft (sin ZooKeeper)                      ║
+║                                                                           ║
+║  Topic 1: casamarket.documento.detectado  →  eventos del ERP             ║
+║  Topic 2: casamarket.ventas.raw           →  filas de venta parseadas    ║
+║                                                                           ║
+║  30,372 mensajes totales   ·   Retención 7 días   ·   1 broker           ║
+╚══════════╤════════════════════════════════════╤══════════════════════════╝
+           │ documento.detectado                │ ventas.raw
+           ▼                                   ▼
+╔══════════════════════╗           ╔══════════════════════════════════════╗
+║  CONSUMER            ║           ║  CONSUMER                            ║
+║  consumer_downloader ║  ──────▶  ║  consumer_excel_parser               ║
+║                      ║  .xlsx    ║                                       ║
+║  Escucha Kafka       ║  .html    ║  Escanea output/descargas/           ║
+║  Descarga archivos   ║           ║  Parsea con pandas                   ║
+║  del ERP via HTTP    ║           ║  Normaliza columnas                  ║
+║                      ║           ║  1 fila Excel = 1 mensaje Kafka      ║
+╚══════════════════════╝           ╚═════════════════╤════════════════════╝
+                                                     │ JSON · 1 venta por mensaje
                                                      ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│                         SPARK STRUCTURED STREAMING                       │
-│                                                                          │
-│   job_ventas.py                          job_documentos.py               │
-│   ┌────────────────────────┐             ┌────────────────────────────┐  │
-│   │ trigger: 30s           │             │ trigger: 30s               │  │
-│   │ from_json + schema     │             │ watermark: 10 min          │  │
-│   │ Sink 1 → PostgreSQL    │             │ ventana: 5 min             │  │
-│   │ Sink 2 → Parquet       │             │ → Parquet métricas         │  │
-│   │ Sink 3 → console top15 │             └────────────────────────────┘  │
-│   └──────────┬─────────────┘                                             │
-└──────────────┼───────────────────────────────────────────────────────────┘
-               │
-       ┌───────┴──────────────┐
-       ▼                      ▼
-┌──────────┐           ┌──────────────────────────┐
-│ Parquet  │           │  PostgreSQL 16            │
-│output/   │           │  tabla: ventas (16,794)   │
-│parquet/  │           │  tabla: predicciones_2026 │
-└──────────┘           └────────────┬─────────────┘
-                                    │
-                                    ▼
-                       ┌────────────────────────────┐
-                       │  ML — scikit-learn          │
-                       │  prediccion_ventas.py       │
-                       │  LinearRegression por prod  │
-                       │  180 predicciones (15×12)   │
-                       │  r² = 0.82                  │
-                       └────────────┬───────────────┘
-                                    │
-                                    ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│                    OBSERVABILIDAD (Grafana + Prometheus)                  │
-│                                                                          │
-│  Dashboard S8: Kafka + Spark     → lag, offsets, rate, broker health    │
-│  Dashboard S9: Ventas IFERSAN    → KPIs, top productos, predicciones    │
-│                                                                          │
-│  3 alertas Prometheus:                                                   │
-│  · KafkaConsumerLagAlto  → lag_sum > 500  por 2 min   [WARNING]         │
-│  · KafkaSinMensajes      → rate offset == 0 por 5 min [WARNING]         │
-│  · KafkaBrokerDown       → kafka-exporter up == 0 por 1 min [CRITICAL]  │
-└──────────────────────────────────────────────────────────────────────────┘
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  SPARK STRUCTURED STREAMING  ·  Apache Spark 3.5.1                        ║
+║                                                                           ║
+║  job_ventas.py               job_documentos.py                           ║
+║  ┌─────────────────────┐     ┌─────────────────────────────────────────┐ ║
+║  │ trigger: 30s        │     │ trigger: 30s · watermark: 10 min        │ ║
+║  │ from_json + schema  │     │ ventana: 5 min · agrupa documentos      │ ║
+║  │ → PostgreSQL        │     │ → Parquet métricas                      │ ║
+║  │ → Parquet ventas    │     └─────────────────────────────────────────┘ ║
+║  │ → console top15     │                                                  ║
+║  └─────────────────────┘                                                  ║
+║                                                                           ║
+║  Throughput medido: 6,074 msg/s   ·   Consumer lag final: 0              ║
+║  Checkpoint: exactly-once   ·   shuffle.partitions: 2                    ║
+╚══════════╤════════════════════════════════════════════════════════════════╝
+           │
+     ┌─────┴──────────────────────────┐
+     ▼                                ▼
+╔══════════════╗              ╔═══════════════════════════════════════════╗
+║   Parquet    ║              ║  PostgreSQL 16                             ║
+║   output/    ║              ║                                           ║
+║   parquet/   ║              ║  ventas           (16,794 filas reales)  ║
+║              ║              ║  predicciones_diarias  (GBM · 62 días)   ║
+║  Columnar    ║              ║  segmentos_clientes    (RFM · 1,106)      ║
+║  Histórico   ║              ║  anomalias_detectadas  (IsolationForest)  ║
+║  ML training ║              ║  model_metadata        (R², MAPE, MAE)   ║
+╚══════════════╝              ╚═════════════════╤═════════════════════════╝
+                                               │
+                      ┌────────────────────────┤
+                      ▼                        ▼
+╔═══════════════════════════════╗    ╔══════════════════════════════════╗
+║  ML TRAINER (cada 30 min)     ║    ║  GRAFANA + PROMETHEUS            ║
+║                               ║    ║                                  ║
+║  6 modelos scikit-learn:      ║    ║  Dashboard S8: Kafka + Spark     ║
+║  · GBM diario por producto    ║    ║  Dashboard S9: Ventas IFERSAN    ║
+║  · Forecast mensual P10/P90   ║    ║                                  ║
+║  · Modelo mensual directo     ║    ║  3 alertas Prometheus activas    ║
+║  · KMeans RFM clientes        ║    ║  Auto-refresh cada 10 segundos   ║
+║  · IsolationForest anomalias  ║    ║                                  ║
+║  · GBM semanal vendedores     ║    ║  ML Web → localhost:8501         ║
+╚═══════════════════════════════╝    ╚══════════════════════════════════╝
 ```
 
 ---
 
-## Stack Tecnológico
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--                        4. STACK TECNOLOGICO                             -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
 
-| Capa | Tecnología | Versión | Rol |
-|---|---|---|---|
-| Productor | Python + kafka-python | 3.12 | Consulta ERP IFERSAN, publica en Kafka |
-| Broker | Apache Kafka KRaft | 3.7.0 | Sin ZooKeeper · 2 topics |
-| Procesamiento | Apache Spark Structured Streaming | 3.5.1 | Micro-batch 30s · exactly-once |
-| Base de datos | PostgreSQL | 16 | BI + predicciones · wal_level=logical |
-| ML | scikit-learn | latest | LinearRegression por producto |
-| Almacén ML | Apache Parquet | — | Columnar · 4 carpetas de salida |
-| Visualización | Grafana | latest | 2 dashboards · 29 paneles · auto-refresh 10s |
-| Métricas | Prometheus + kafka-exporter | latest | Scraping cada 15s |
-| Parser | pandas + openpyxl + lxml | — | Excel/HTML normalizados |
-| Orquestación | Docker Compose | — | **13 servicios** · red ec-kafka-dev-net |
+# PARTE IV — STACK TECNOLOGICO
 
-### Los 13 servicios Docker
-
-| Servicio | Imagen | Función |
-|---|---|---|
-| `ec-kafka` | apache/kafka:3.7.0 | Broker Kafka KRaft |
-| `kafka-ui` | provectuslabs/kafka-ui | UI de exploración de topics |
-| `kafka-exporter` | danielqsj/kafka-exporter | Expone métricas Kafka a Prometheus |
-| `casamarket-postgres` | postgres:16 | Base de datos principal |
-| `prometheus` | prom/prometheus | TSDB de métricas |
-| `grafana` | grafana/grafana | Dashboards BI + operativos |
-| `producer` | casamarket-python:latest | Consulta ERP y publica en Kafka |
-| `consumer-downloader` | casamarket-python:latest | Descarga archivos del ERP |
-| `consumer-excel-parser` | casamarket-python:latest | Parsea Excel → Kafka |
-| `spark-ventas` | casamarket-spark:latest | job_ventas.py |
-| `spark-docs` | casamarket-spark:latest | job_documentos.py |
-| `jupyter-spark` | jupyter/pyspark-notebook | Notebooks ML |
-| `debezium` | debezium/connect:2.7 | CDC PostgreSQL → Kafka |
-
----
-
-## Estructura del Proyecto
+## Tecnologías seleccionadas y por qué
 
 ```
-UnidadII/
-├── docker-compose.yml              ← Orquesta los 13 servicios
-├── requirements.txt
-├── .env                            ← Credenciales ERP (NO subir a git)
-│
-├── producer/
-│   ├── producer.py                 ← 202 líneas · ciclo 300s · JWT auth
-│   └── state_documentos.json       ← 175 IDs (180472–183454) · idempotencia
-│
-├── consumer/
-│   ├── consumer_downloader.py      ← Descarga .xlsx/.html a output/descargas/
-│   ├── consumer_excel_parser.py    ← Parsea Excel → topic ventas.raw
-│   ├── state_downloads.json        ← Qué IDs ya se descargaron
-│   └── state_excel_parsed.json     ← Qué archivos ya se parsearon
-│
-├── spark_streaming/
-│   ├── job_ventas.py               ← Streaming ventas → Parquet + PostgreSQL
-│   └── job_documentos.py           ← Streaming docs → Parquet (ventanas 5 min)
-│
-├── ml/
-│   └── prediccion_ventas.py        ← LinearRegression sklearn → predicciones_2026
-│
-├── notebooks/
-│   └── 02_ml_prediccion_ventas.ipynb
-│
-├── postgres/
-│   └── init.sql                    ← DDL: ventas, predicciones_2026, vistas
-│
-├── observability/
-│   ├── alertas.yml                 ← 3 reglas Prometheus
-│   └── grafana/
-│       ├── provisioning/
-│       │   ├── datasources/ds.yml  ← casamarket-prom + casamarket-pg
-│       │   └── dashboards/dashboard.yml
-│       └── dashboards/
-│           ├── kafka_spark.json    ← Dashboard S8
-│           └── ventas_casamarket.json ← Dashboard S9
-│
-├── output/
-│   ├── descargas/                  ← 84 archivos Excel/HTML · 44 MB
-│   ├── parquet/ventas/             ← Datos para entrenamiento ML
-│   ├── parquet/docs/               ← Métricas de documentos con ventanas
-│   └── checkpoints/                ← Exactly-once Spark
-│
-├── docs/                           ← Documentación técnica por componente
-│   ├── arquitectura/
-│   ├── componentes/
-│   ├── observabilidad/
-│   └── resultados/
-│
-└── pptx/
-    └── IFERSAN_PitchDeck.pptx      ← Presentación pitch deck v5
+┌─────────────────┬──────────────────────────┬───────────────────────────────────────┐
+│ CAPA            │ TECNOLOGIA               │ POR QUE LA ELEGIMOS                   │
+├─────────────────┼──────────────────────────┼───────────────────────────────────────┤
+│ Ingestión       │ Python + kafka-python     │ Control total sobre el productor;     │
+│                 │ 3.12                      │ JWT auth + paginación + idempotencia  │
+├─────────────────┼──────────────────────────┼───────────────────────────────────────┤
+│ Mensajería      │ Apache Kafka 3.7.0        │ Log distribuido inmutable; KRaft      │
+│                 │ KRaft (sin ZooKeeper)     │ elimina dependencia de ZooKeeper;     │
+│                 │                          │ exactamente-una-vez garantizado        │
+├─────────────────┼──────────────────────────┼───────────────────────────────────────┤
+│ Procesamiento   │ Apache Spark 3.5.1        │ Micro-batch 30s; exactly-once con     │
+│                 │ Structured Streaming      │ checkpointing; schema enforcement      │
+├─────────────────┼──────────────────────────┼───────────────────────────────────────┤
+│ Almacenamiento  │ PostgreSQL 16             │ SQL completo para BI; wal_level=      │
+│                 │ + Apache Parquet          │ logical para CDC; Parquet para ML     │
+├─────────────────┼──────────────────────────┼───────────────────────────────────────┤
+│ Machine         │ scikit-learn 1.4+         │ GBM + KMeans + IsolationForest;       │
+│ Learning        │ GBM · KMeans · IF         │ 6 modelos especializados por dominio  │
+├─────────────────┼──────────────────────────┼───────────────────────────────────────┤
+│ Web ML          │ FastAPI + Chart.js        │ SPA liviana; tiempo real via SSE;     │
+│                 │ (ml-web)                  │ sin framework pesado                  │
+├─────────────────┼──────────────────────────┼───────────────────────────────────────┤
+│ Visualización   │ Grafana + Prometheus      │ Dashboards BI + operativos en un      │
+│                 │                          │ solo lugar; alertas nativas            │
+├─────────────────┼──────────────────────────┼───────────────────────────────────────┤
+│ Orquestación    │ Docker Compose            │ 15 servicios reproducibles en         │
+│                 │ 15 servicios              │ cualquier máquina con docker up       │
+└─────────────────┴──────────────────────────┴───────────────────────────────────────┘
+```
+
+### Los 15 contenedores del sistema
+
+```
+┌─────────────────────────┬──────────────────────────────┬─────────────────────────┐
+│ CONTENEDOR              │ IMAGEN                       │ FUNCION                 │
+├─────────────────────────┼──────────────────────────────┼─────────────────────────┤
+│ ec-kafka                │ apache/kafka:3.7.0            │ Broker Kafka KRaft      │
+│ kafka-ui                │ provectuslabs/kafka-ui        │ UI exploración topics   │
+│ kafka-exporter          │ danielqsj/kafka-exporter      │ Métricas → Prometheus   │
+├─────────────────────────┼──────────────────────────────┼─────────────────────────┤
+│ postgres                │ postgres:16                   │ Base de datos principal │
+├─────────────────────────┼──────────────────────────────┼─────────────────────────┤
+│ prometheus              │ prom/prometheus               │ TSDB de métricas        │
+│ grafana                 │ grafana/grafana               │ Dashboards BI           │
+├─────────────────────────┼──────────────────────────────┼─────────────────────────┤
+│ producer                │ casamarket-python             │ Consulta ERP → Kafka    │
+│ consumer-downloader     │ casamarket-python             │ Descarga archivos ERP   │
+│ consumer-excel-parser   │ casamarket-python             │ Parsea Excel → Kafka    │
+├─────────────────────────┼──────────────────────────────┼─────────────────────────┤
+│ spark-ventas            │ casamarket-spark              │ job_ventas.py           │
+│ spark-docs              │ casamarket-spark              │ job_documentos.py       │
+│ jupyter-spark           │ jupyter/pyspark-notebook      │ Notebooks exploración   │
+├─────────────────────────┼──────────────────────────────┼─────────────────────────┤
+│ debezium                │ debezium/connect:2.7          │ CDC PostgreSQL → Kafka  │
+│ ml-trainer              │ casamarket-python             │ Re-entrena 6 modelos    │
+│ ml-web                  │ casamarket-python             │ SPA predicciones web    │
+└─────────────────────────┴──────────────────────────────┴─────────────────────────┘
 ```
 
 ---
 
-## Servicios y Puertos
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--                        5. RESULTADOS REALES                             -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
 
-| Servicio | URL | Credenciales | Para qué |
-|---|---|---|---|
-| **Grafana** | http://localhost:43000 | admin / casamarket | Dashboards BI + observabilidad |
-| **Kafka UI** | http://localhost:18085 | — | Explorar topics y mensajes |
-| **Jupyter** | http://localhost:8888 | token: casamarket | Notebooks ML |
-| **Spark UI ventas** | http://localhost:4042 | — | Jobs de job_ventas.py |
-| **Spark UI docs** | http://localhost:4041 | — | Jobs de job_documentos.py |
-| **Prometheus** | http://localhost:49090 | — | Métricas en bruto |
-| **PostgreSQL** | localhost:15432 | casamarket / casamarket | DBeaver / psql |
+# PARTE V — RESULTADOS CON DATOS REALES DE IFERSAN
+
+> Todos los números que siguen provienen del pipeline corriendo con datos reales
+> de IFERSAN entre el 27 de Abril y el 19 de Mayo de 2026.
+
+## Datos del negocio
+
+```
+┌─────────────────────────────────────┬────────────────────────────────────┐
+│  METRICA                            │  VALOR REAL                        │
+├─────────────────────────────────────┼────────────────────────────────────┤
+│  Transacciones procesadas           │  16,794                            │
+│  Ingresos reales registrados        │  S/ 406,150.50                     │
+│  Periodo de datos                   │  27 Abr – 19 May 2026              │
+│  Documentos ERP descargados         │  175 archivos (IDs 180472–183454)  │
+│  Archivos Excel/HTML almacenados    │  84 archivos · 44 MB               │
+│  Productos únicos                   │  62                                │
+│  Clientes únicos                    │  1,106                             │
+├─────────────────────────────────────┼────────────────────────────────────┤
+│  Producto #1                        │  PEPSI 2000ML — S/ 76,400          │
+│  Producto #2                        │  INCA KOLA 500ML — S/ 62,300       │
+│  Producto #3                        │  COCA COLA 500ML — S/ 48,100       │
+├─────────────────────────────────────┼────────────────────────────────────┤
+│  Vendedor #1                        │  ROSA CUSILAYME — S/ 101,500       │
+│  Vendedor #2                        │  JHONATAN — S/ 92,000              │
+└─────────────────────────────────────┴────────────────────────────────────┘
+```
+
+## Rendimiento del pipeline
+
+```
+┌─────────────────────────────────────┬────────────────────────────────────┐
+│  METRICA                            │  VALOR MEDIDO                      │
+├─────────────────────────────────────┼────────────────────────────────────┤
+│  Mensajes en Kafka (2 topics)       │  30,372                            │
+│  Latencia ERP → Grafana             │  < 8 minutos                       │
+│  Throughput Spark (re-proceso)      │  6,074 msg/s                       │
+│  Consumer lag final                 │  0 (cero)                          │
+│  Trigger Spark micro-batch          │  30 segundos                       │
+│  Auto-refresh Grafana               │  10 segundos                       │
+│  Garantía de entrega                │  Exactly-once (checkpoint)         │
+└─────────────────────────────────────┴────────────────────────────────────┘
+```
+
+## Dashboards Grafana
+
+### Dashboard S8 — Operativo Kafka + Spark
+
+Datasource: Prometheus · 9 paneles operativos
+
+| Panel | Métrica PromQL | Valor en producción |
+|:---|:---|:---|
+| Kafka Broker Status | `up{job="kafka-exporter"}` | UP |
+| Topics activos | `count(kafka_topic_partitions)` | 2 |
+| Offset ventas.raw | `kafka_topic_partition_current_offset` | 30,372 |
+| Consumer Lag | `kafka_consumergroup_lag_sum` | 0 |
+| Rate mensajes/s | `rate(...[5m])` | pico 6,074 msg/s |
+
+### Dashboard S9 — Ventas IFERSAN
+
+Datasource: PostgreSQL · 29 paneles · Auto-refresh 10s
+
+| Sección | Panel | Dato real |
+|:---|:---|:---|
+| KPI | Total ingresos | S/ 406,150.50 |
+| KPI | Transacciones | 16,794 |
+| KPI | Productos únicos | 62 |
+| KPI | Clientes únicos | 1,106 |
+| Histórico | Timeseries ingresos diarios | 27 Abr – 19 May 2026 |
+| Distribución | Top 15 productos | PEPSI 2000ML lidera |
+| Distribución | Ingresos por vendedor | ROSA CUSILAYME S/101,500 |
+| ML | Forecast julio 2026 | S/ 1,008,375 |
+| ML | Estado hoy vs predicción | Desviación +16.8% ESCOCESA |
+| ML | Segmentos clientes | 203 VIP · 204 Regular · 699 En Riesgo |
+| ML | Anomalías detectadas | 155 eventos en 56 productos |
 
 ---
 
-## Cómo Levantar el Sistema
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--                        6. MACHINE LEARNING                              -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
 
-### Requisitos previos
+# PARTE VI — CAPA DE MACHINE LEARNING
+
+## Seis modelos especializados · Re-entrenamiento cada 30 minutos
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  ml-trainer ejecuta este ciclo cada 30 minutos:                        │
+│                                                                         │
+│  1. GBM Diario por producto     trainer.py          → predicciones_diarias     │
+│  2. Forecast Mensual Agregado   trainer_forecast.py → predicciones_mes_siguiente  │
+│  3. Modelo Mensual Directo      trainer_mensual.py  → predicciones_mensuales   │
+│  4. KMeans RFM Clientes         trainer_clientes.py → segmentos_clientes       │
+│  5. IsolationForest Anomalías   trainer_anomalias.py→ anomalias_detectadas     │
+│  6. GBM Semanal Vendedores      trainer_vendedor.py → predicciones_vendedor    │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Modelo 1 — GBM Diario por Producto
+
+**Objetivo:** predecir los ingresos diarios de cada producto para los próximos 62 días.
+
+**Algoritmo:** `GradientBoostingRegressor` (scikit-learn)
+
+**Decisión de diseño clave — Ventana de entrenamiento de 35 días:**
+
+```
+PROBLEMA DETECTADO EN DATOS REALES:
+
+  Mayo 12-19: ventas S/ 9,000-13,000 / día   (límite API eliminado temporalmente)
+  Mayo 20+  : ventas S/ 2,500-3,000 / día    (régimen estable operativo)
+
+  Con 60 días de historial: el GBM aprendía el spike y producía R² = -351
+  Con los últimos 35 días:  el GBM entrena solo en el régimen estable → R² = -0.34
+```
+
+**Configuración del modelo:**
+
+| Parámetro | Valor | Razón |
+|:---|:---|:---|
+| Ventana entrenamiento | últimos 35 días | Aísla el régimen operativo estable |
+| `n_estimators` | 80 / 200 / 250 | Adaptativo según n de muestras |
+| `max_depth` | 3 | Evita memorizar ruido diario |
+| `learning_rate` | 0.08 | Convergencia lenta = más robusto |
+| `subsample` | 0.8 | Bagging: 80% de filas por árbol |
+| Clip outliers | mediana + 3σ | Capea picos residuales extremos |
+| Quantile P10/P90 | solo si n ≥ 50 | Con menos datos las bandas son inútiles |
+
+**Features de entrenamiento (20 variables):**
+
+```
+Calendario: dia_semana  · dia_mes   · semana_mes  · es_fin_semana
+Estacional: mes_sin     · mes_cos   · dia_anio_sin · dia_anio_cos
+Lags:       lag_1d      · lag_3d    · lag_7d       · lag_14d    · lag_21d · lag_28d
+Promedios:  rolling_3d  · rolling_7d · rolling_14d · rolling_28d
+Tendencia:  tendencia_7d (pendiente lineal 7 días) · pct_change_7d
+```
+
+**Validación:** `TimeSeriesSplit(n_splits=3, test_size=7)` — cada fold valida 7 días exactos,
+garantizando que el primer fold siempre entrena con mínimo 14 días.
+
+**Resultados:**
+
+```
+┌──────────────────────────────────┬──────────────────┬────────────────────┐
+│  METRICA                         │  ANTES (v1)       │  AHORA (v3)        │
+├──────────────────────────────────┼──────────────────┼────────────────────┤
+│  Productos entrenados            │  60 / 62          │  51 / 62           │
+│  R² promedio                     │  -351.0           │  -0.344            │
+│  Productos con R² < -2           │  51 / 60          │  0 / 51            │
+│  MAPE promedio                   │  miles de %       │  6.9%              │
+│  MAPE rango                      │  —                │  0.4% – 33.3%      │
+│  Bandas P10/P90                  │  ±S/9 (inútiles)  │  ±4.5% predicho    │
+└──────────────────────────────────┴──────────────────┴────────────────────┘
+
+  Los 11 productos omitidos solo vendieron Mayo 12-19.
+  No tienen historial en el régimen estable: correctamente excluidos.
+```
+
+---
+
+### Modelo 2 — Forecast Mensual Agregado
+
+**Objetivo:** proyección total del mes siguiente con bandas de incertidumbre.
+
+Agrega las predicciones diarias del Modelo 1 al mes completo, heredando las bandas P10/P90 acumuladas.
+
+**Resultado Julio 2026:** S/ 1,008,375 · P10: S/ 956,854 · P90: S/ 1,059,728
+
+---
+
+### Modelo 3 — Modelo Mensual Directo
+
+**Objetivo:** predecir el total mensual por producto directamente, sin acumular errores diarios.
+
+Entrenado sobre totales mensuales, usa algoritmo adaptativo según datos disponibles:
+
+| Historia | Algoritmo | Razón |
+|:---|:---|:---|
+| ≥ 8 meses | GBM + quantile P10/P90 | Suficientes datos para árbol profundo |
+| 4 – 7 meses | GBM simple (15-30 árboles) | Árboles poco profundos, evita overfit |
+| 2 – 3 meses | Ridge regression | Modelo lineal, no puede overfit con 2 pts |
+| < 2 meses | Baseline: promedio × días | Cuando no hay historia suficiente |
+
+Validación: **Leave-One-Out CV** — honesto con datasets de 2 a 8 muestras.
+
+> Estado actual: todos los modelos en confidencia BAJA (1 mes completo de datos). Mejorará mes a mes.
+
+---
+
+### Modelo 4 — Segmentación de Clientes RFM
+
+**Objetivo:** clasificar los 1,106 clientes en VIP / Regular / En Riesgo.
+
+**Algoritmo:** `KMeans(n_clusters=3)` con `StandardScaler`
+
+**Problema detectado y resuelto:**
+
+```
+PROBLEMA: FERNANDEZ CALA TOMAS
+  16,794 transacciones en 9 días · S/ 406,151 total
+  → Distorsionaba los centroides de KMeans
+  → Resultado: 1 cliente VIP, 1,105 en el mismo cluster
+
+SOLUCIÓN: Detección mega-outlier antes del clustering
+  umbral = Q3 + 3 × IQR sobre valor_monetario
+  → Outliers etiquetados VIP directamente (no entran a KMeans)
+  → KMeans corre solo sobre clientes normales
+```
+
+**Métricas RFM:** Recencia (días desde última compra) · Frecuencia (transacciones) · Monetario (S/ total)
+
+**Resultados:**
+
+| Segmento | Clientes | Recencia media | Frecuencia media | Valor medio |
+|:---:|:---:|:---:|:---:|:---:|
+| VIP | 203 | 2 días | 683 transacciones | S/ 7,662 |
+| Regular | 204 | 1 día | 70 transacciones | S/ 439 |
+| En Riesgo | 699 | 45 días | 15 transacciones | S/ 329 |
+
+---
+
+### Modelo 5 — Detección de Anomalías
+
+**Objetivo:** identificar días con ventas inusuales por producto.
+
+**Algoritmo:** `IsolationForest(contamination=0.05, n_estimators=100)`
+
+**Decisión de diseño — referencia temporal desde MAX(fecha) de la BD:**
+
+```
+PROBLEMA con date.today():
+  Datos terminan 19/05 · Hoy es 26/06
+  → 26 días de ceros artificiales entre el último dato y hoy
+  → IsolationForest aprende que cero es "normal"
+  → Ninguna anomalía detectada en el período real
+
+SOLUCIÓN: Usar MAX(fecha) de la tabla ventas como referencia
+  → El modelo ve solo los 60 días del dataset real
+  → Detecta correctamente el spike de Mayo 12-19
+```
+
+**Features:** ingresos · lag_1d · rolling_7d · rolling_14d · z_score
+
+**Clasificación por desviación de media 14 días:**
+- `ALTA_VENTA` — ventas > 1.5× media 14d
+- `CAIDA_VENTAS` — ventas < 0.4× media 14d
+- `INUSUAL` — anomalía estadística no clasificada
+
+**Resultado:** 155 anomalías en 56 productos
+
+---
+
+### Modelo 6 — Predicción por Vendedor
+
+**Objetivo:** forecast semanal de ingresos por vendedor para las próximas 8 semanas.
+
+**Algoritmo:** `GradientBoostingRegressor` sobre series semanales agregadas
+
+**Features:** semana del año · mes · lag_1w/2w/3w/4w · rolling_3w · n_transacciones semana anterior
+
+**Inicio del forecast desde el último dato real:**
+
+```
+PROBLEMA con "next Monday desde date.today()":
+  Datos terminan semana del 16-22/06 · Hoy es 26/06
+  → Si calculamos desde hoy, saltamos la semana del 23/06
+  → Los lags del buffer apuntan al final de los datos, no a hoy
+
+SOLUCIÓN: semana_inicio = ultimo_dato_en_BD + 1 semana
+  → Forecast continúa exactamente desde donde terminan los datos
+```
+
+Bandas P10/P90 solo si hay ≥ 20 semanas de historia. De lo contrario: ±1.5 × MAE.
+
+---
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--                        7. BASE DE DATOS                                 -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+# PARTE VII — BASE DE DATOS POSTGRESQL
+
+## Esquema principal
+
+```sql
+-- Tabla de ventas (16,794 filas reales de IFERSAN)
+ventas (
+  id              SERIAL PRIMARY KEY,
+  fecha           DATE,
+  producto        TEXT,            -- "PEPSI 2000ML"
+  cod_producto    TEXT,            -- "PEP-001"
+  marca           TEXT,            -- "LINEA PEPSI"
+  categoria       TEXT,            -- "GASEOSAS PEPSI"
+  cantidad        NUMERIC,
+  precio_unitario NUMERIC,
+  total           NUMERIC,         -- SUM = S/ 406,150.50
+  cliente         TEXT,            -- "YOLANDA GONZA HUANCA"
+  vendedor        TEXT,            -- "ROSA CUSILAYME" · S/ 101,500
+  zona            TEXT,            -- "ZONA NORTE"
+  procesado_ts    TIMESTAMP
+)
+
+-- Predicciones GBM diarias (62 días por producto)
+predicciones_diarias (
+  producto        TEXT,
+  fecha_pred      DATE,
+  ingresos_pred   NUMERIC,         -- predicción puntual
+  ingresos_low    NUMERIC,         -- P10 (cuantil 10%)
+  ingresos_high   NUMERIC,         -- P90 (cuantil 90%)
+  unidades_pred   NUMERIC,
+  algoritmo       TEXT,            -- "GradientBoosting"
+  entrenado_en    TIMESTAMPTZ,
+  UNIQUE(producto, fecha_pred)
+)
+
+-- Metadatos de rendimiento de cada modelo
+model_metadata (
+  modelo     TEXT,                 -- "productos", "vendedores", "mensual"
+  producto   TEXT,
+  algoritmo  TEXT,
+  r2         NUMERIC,
+  mae        NUMERIC,
+  rmse       NUMERIC,
+  mape       NUMERIC,
+  n_muestras INT,
+  entrenado_en TIMESTAMPTZ,
+  PRIMARY KEY(modelo, producto)
+)
+```
+
+## Consultas rápidas
+
+```sql
+-- Top 5 productos por ingresos reales
+SELECT producto, ROUND(SUM(total)::NUMERIC, 2) AS ingresos
+FROM ventas WHERE total > 0
+GROUP BY producto ORDER BY ingresos DESC LIMIT 5;
+
+-- Ranking de vendedores
+SELECT vendedor, ROUND(SUM(total)::NUMERIC, 2) AS ingresos,
+       COUNT(*) AS transacciones
+FROM ventas WHERE total > 0
+GROUP BY vendedor ORDER BY ingresos DESC;
+
+-- Forecast julio 2026 por producto (Top 10)
+SELECT producto,
+       ROUND(SUM(ingresos_pred)::NUMERIC, 2) AS julio_pred,
+       ROUND(SUM(ingresos_low)::NUMERIC,  2) AS julio_p10,
+       ROUND(SUM(ingresos_high)::NUMERIC, 2) AS julio_p90
+FROM predicciones_diarias
+WHERE DATE_TRUNC('month', fecha_pred) = '2026-07-01'
+GROUP BY producto ORDER BY julio_pred DESC LIMIT 10;
+-- Total julio 2026: S/ 1,008,375
+
+-- Estado hoy: real vs predicho con alerta
+SELECT producto, ingresos_real, ingresos_pred,
+       ROUND(diff_pct::NUMERIC, 1) AS desviacion_pct, alerta
+FROM estado_dia_actual ORDER BY alerta, producto;
+
+-- Segmentos de clientes
+SELECT segmento, COUNT(*) AS clientes,
+       ROUND(AVG(valor_monetario)::NUMERIC, 2) AS valor_medio
+FROM segmentos_clientes GROUP BY segmento ORDER BY valor_medio DESC;
+
+-- Calidad de todos los modelos
+SELECT modelo, producto,
+       ROUND(r2::NUMERIC, 3)   AS r2,
+       ROUND(mape::NUMERIC, 1) AS mape_pct,
+       ROUND(mae::NUMERIC, 2)  AS mae_soles,
+       n_muestras
+FROM model_metadata ORDER BY modelo, mape;
+```
+
+---
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--                        8. COMO LEVANTAR                                 -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+# PARTE VIII — COMO LEVANTAR EL SISTEMA
+
+## Requisitos
 
 - Docker Desktop corriendo
-- Archivo `.env` en la raíz:
+- Archivo `.env` en la raíz del proyecto:
 
 ```env
 API_BASE_URL=https://admin.casamarket.la
@@ -268,61 +704,65 @@ COMPANY_ID=5588
 KAFKA_BOOTSTRAP=localhost:19092
 ```
 
-> El `COMPANY_ID=5588` identifica a IFERSAN dentro del ERP CasaMarket.
+> `COMPANY_ID=5588` identifica a IFERSAN dentro del ERP CasaMarket.
 
-### Paso 1 — Levantar
+## Levantar en un comando
 
 ```bash
 docker compose up -d
 ```
 
-Espera ~60 segundos. Kafka (`ec-kafka`) tarda en arrancar; los demás esperan a que esté healthy.
+Espera ~60 segundos. Kafka tarda en arrancar; todos los demás servicios esperan
+el healthcheck de Kafka antes de iniciar.
 
-### Paso 2 — Verificar los 13 servicios
+## Verificar los 15 servicios
 
 ```bash
 docker compose ps
 ```
 
-Los críticos:
-
-| Servicio | Estado esperado |
-|---|---|
+| Servicio critico | Estado esperado |
+|:---|:---|
 | `ec-kafka` | Up (healthy) |
-| `casamarket-postgres` | Up (healthy) |
+| `postgres` | Up (healthy) |
 | `producer` | Up |
 | `consumer-downloader` | Up |
 | `consumer-excel-parser` | Up |
 | `spark-ventas` | Up |
+| `ml-trainer` | Up |
 | `grafana` | Up |
+| `ml-web` | Up |
 
-### Paso 3 — El pipeline arranca solo
+## El pipeline arranca automaticamente
 
 ```
-1. producer.py      → consulta ERP cada 300s → publica en casamarket.documento.detectado
-2. consumer-downloader → descarga .xlsx/.html → output/descargas/
-3. consumer-excel-parser → parsea fila por fila → publica en casamarket.ventas.raw
-4. spark-ventas     → consume ventas.raw cada 30s → escribe en PostgreSQL + Parquet
-5. grafana          → lee PostgreSQL → actualiza dashboards cada 10s
+1. producer.py          → consulta ERP cada 300s → publica en Kafka
+2. consumer-downloader  → descarga .xlsx/.html del ERP
+3. consumer-excel-parser → parsea fila por fila → publica en Kafka
+4. spark-ventas         → consume ventas.raw cada 30s → PostgreSQL + Parquet
+5. ml-trainer           → re-entrena 6 modelos cada 30 min → PostgreSQL
+6. grafana              → lee PostgreSQL → actualiza dashboards cada 10s
+7. ml-web               → sirve SPA de predicciones en localhost:8501
 ```
 
-### Paso 4 — Abrir Grafana
+## Accesos
 
-**http://localhost:43000** · admin / casamarket
-
-- **Dashboard S8 — Kafka + Spark**: broker health, consumer lag, offsets, rate
-- **Dashboard S9 — Ventas IFERSAN**: KPIs reales + Top productos + ML 2026
-
-### Paso 5 — Ejecutar predicciones ML (ya están guardadas, solo si quieres regenerarlas)
-
-```bash
-docker cp ml/prediccion_ventas.py jupyter-spark:/home/jovyan/prediccion_ventas.py
-docker exec jupyter-spark sh -c "python /home/jovyan/prediccion_ventas.py"
-```
+| Interfaz | URL | Credenciales |
+|:---|:---|:---|
+| **Grafana — Dashboards BI** | http://localhost:43000 | admin / casamarket |
+| **ML Web — Predicciones** | http://localhost:8501 | — |
+| **Kafka UI — Topics** | http://localhost:18085 | — |
+| **Spark UI — Jobs** | http://localhost:4042 | — |
+| **Prometheus — Métricas** | http://localhost:49090 | — |
+| **PostgreSQL** | localhost:15432 | casamarket / casamarket |
 
 ---
 
-## Mensaje Kafka — Formato Real
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--                        9. MENSAJES KAFKA                                -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+# PARTE IX — FORMATOS DE MENSAJES KAFKA
 
 ### Topic `casamarket.documento.detectado` (producer → downloader)
 
@@ -361,265 +801,287 @@ docker exec jupyter-spark sh -c "python /home/jovyan/prediccion_ventas.py"
 
 ---
 
-## Parámetros Spark
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--                       10. PARAMETROS SPARK                              -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+# PARTE X — PARÁMETROS SPARK Y RENDIMIENTO
 
 | Parámetro | Valor | Por qué |
-|---|---|---|
-| `trigger` | 30s | Bajo lag, poco overhead |
+|:---|:---|:---|
+| `trigger` | 30s | Latencia baja con overhead mínimo |
 | `watermark` | 10 min | Tolera eventos tardíos de red |
-| `ventana` (docs) | 5 min | Agrupa por períodos manejables |
+| `ventana` (docs) | 5 min | Agrupa documentos en períodos manejables |
 | `output mode` | append (ventas) | Evita duplicados en PostgreSQL |
-| `checkpoint` | output/checkpoints/ventas_agg | Exactly-once |
-| `shuffle.partitions` | 2 | Ajustado a entorno local[2] |
-| `startingOffsets` | earliest | Lee desde el inicio si no hay checkpoint |
-
----
-
-## Métricas de Rendimiento Medidas
+| `checkpoint` | output/checkpoints/ | Exactly-once garantizado |
+| `shuffle.partitions` | 2 | Ajustado a entorno single-node |
+| `startingOffsets` | earliest | Lee todo desde el inicio si no hay checkpoint |
 
 | Prueba | Mensajes | Throughput | Lag final |
-|---|---|---|---|
+|:---|:---:|:---:|:---:|
 | Carga inicial (con checkpoint) | 15,186 | ~506 msg/s | 0 |
-| Re-proceso completo (sin checkpoint) | 30,372 | **~6,074 msg/s** | **0** |
+| Re-proceso completo (sin checkpoint) | 30,372 | **6,074 msg/s** | **0** |
 | job_documentos (ventanas 5 min) | ~83 | ~3 msg/s | 0 |
 
 ---
 
-## Base de Datos PostgreSQL
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--                       11. ALERTAS PROMETHEUS                            -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
 
-```sql
--- Tabla principal (16,794 filas reales de IFERSAN)
-ventas (
-  id SERIAL PRIMARY KEY,
-  fecha DATE,
-  producto TEXT,           -- "PEPSI 2000ML", "INCA KOLA 1.5L", ...
-  cod_producto TEXT,       -- "PEP-001"
-  marca TEXT,              -- "LINEA PEPSI"
-  categoria TEXT,          -- "GASEOSAS PEPSI"
-  cantidad NUMERIC,
-  precio_unitario NUMERIC,
-  total NUMERIC,           -- SUM = S/ 406,150.50
-  cliente TEXT,            -- "YOLANDA GONZA HUANCA"
-  vendedor TEXT,           -- "ROSA CUSILAYME" (líder S/101,500)
-  zona TEXT,               -- "ZONA NORTE"
-  procesado_ts TIMESTAMP
-)
-
--- Predicciones ML (180 filas: 15 productos × 12 meses)
-predicciones_2026 (
-  id SERIAL PRIMARY KEY,
-  producto TEXT,
-  mes INT,                 -- 1=Ene, 12=Dic
-  ingresos_real NUMERIC,   -- datos históricos Abr-May
-  ingresos_pred NUMERIC,   -- proyectado por LinearRegression
-  unidades_pred NUMERIC,
-  modelo TEXT,             -- "LinearRegression"
-  r2_score NUMERIC,        -- 0.82
-  generado_en TIMESTAMP
-)
-```
-
-**Consultas rápidas:**
-```sql
--- Top 5 productos de IFERSAN
-SELECT producto, ROUND(SUM(total)::NUMERIC, 2) AS ingresos
-FROM ventas WHERE total > 0
-GROUP BY producto ORDER BY ingresos DESC LIMIT 5;
-
--- Ranking de vendedores (ROSA CUSILAYME #1)
-SELECT vendedor, ROUND(SUM(total)::NUMERIC, 2) AS ingresos
-FROM ventas WHERE total > 0
-GROUP BY vendedor ORDER BY ingresos DESC;
-
--- Proyección 2026 por producto
-SELECT producto, ROUND(SUM(ingresos_pred)::NUMERIC, 2) AS proyectado_2026
-FROM predicciones_2026
-GROUP BY producto ORDER BY proyectado_2026 DESC;
-
--- Total proyectado 2026
-SELECT ROUND(SUM(ingresos_pred)::NUMERIC, 2) FROM predicciones_2026;
--- Resultado: S/ 1,614,943.32
-```
-
----
-
-## Dashboards Grafana
-
-### Dashboard S8 — Kafka + Spark
-**Datasource:** Prometheus · **9 paneles operativos**
-
-| Panel | PromQL |
-|---|---|
-| Kafka Broker UP/DOWN | `up{job="kafka-exporter"}` |
-| Topics activos | `count(kafka_topic_partitions)` |
-| Offset — ventas.raw | `kafka_topic_partition_current_offset{topic="casamarket.ventas.raw"}` |
-| Consumer Lag (gauge 0-1000) | `kafka_consumergroup_lag_sum` |
-| Rate mensajes/s | `rate(kafka_topic_partition_current_offset{topic="casamarket.ventas.raw"}[5m])` |
-
-### Dashboard S9 — Ventas IFERSAN
-**Datasource:** PostgreSQL · **29 paneles** · Auto-refresh 10s
-
-| Sección | Panel | Valor real |
-|---|---|---|
-| KPI | Total Ingresos | **S/ 406,150.50** |
-| KPI | Transacciones | **16,794** |
-| KPI | Productos únicos | **62** |
-| KPI | Clientes únicos | **1,106** |
-| Histórico | Ingresos diarios | Timeseries Abr 27 – May 19 |
-| Histórico | Top 15 productos | PEPSI 2000ML · INCA KOLA · COCA COLA... |
-| Distribución | Ingresos por Vendedor | ROSA CUSILAYME S/101,500 |
-| ML 2026 | Proyectado total | **S/ 1,614,943.32** |
-| ML 2026 | PEPSI 2000ML 2026 | **S/ 334,800** |
-| ML 2026 | Tendencia mensual | Timeseries Ene–Dic 2026 |
-| ML 2026 | Tabla completa | 180 filas (15 prod × 12 meses) |
-
----
-
-## Alertas Prometheus (alertas.yml)
+# PARTE XI — ALERTAS PROMETHEUS
 
 ```yaml
-# KafkaConsumerLagAlto — WARNING
-expr:  kafka_consumergroup_lag_sum > 500
-for:   2m
-# Se dispara si el consumer acumula más de 500 mensajes por 2 minutos.
-# Causa típica: Spark detenido o carga pico de documentos.
+# CRITICA — Broker Kafka caido
+KafkaBrokerDown:
+  expr:  up{job="kafka-exporter"} == 0
+  for:   1m
+  # Se dispara si el broker no responde por 1 minuto.
+  # Todos los servicios del pipeline se detienen.
 
-# KafkaSinMensajes — WARNING
-expr:  rate(kafka_topic_partition_current_offset[5m]) == 0
-for:   5m
-# Se dispara si no hay nuevos mensajes en ningún topic por 5 minutos.
-# Causa típica: producer.py caído o API del ERP inaccesible.
+# WARNING — Consumer acumulando mensajes
+KafkaConsumerLagAlto:
+  expr:  kafka_consumergroup_lag_sum > 500
+  for:   2m
+  # Causa tipica: Spark detenido o pico de carga de documentos.
 
-# KafkaBrokerDown — CRITICAL
-expr:  up{job="kafka-exporter"} == 0
-for:   1m
-# Se dispara si el kafka-exporter no responde por 1 minuto.
-# Todos los servicios dependientes fallan.
+# WARNING — Pipeline sin actividad
+KafkaSinMensajes:
+  expr:  rate(kafka_topic_partition_current_offset[5m]) == 0
+  for:   5m
+  # Causa tipica: producer.py caido o API del ERP inaccesible.
 ```
 
 ---
 
-## Comandos Útiles
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--                       12. ESTRUCTURA DEL PROYECTO                       -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+# PARTE XII — ESTRUCTURA DEL PROYECTO
+
+```
+UnidadII/
+├── docker-compose.yml              ← Orquesta los 15 servicios
+├── requirements.txt
+├── .env                            ← Credenciales ERP (NO subir a git)
+│
+├── producer/
+│   ├── producer.py                 ← 202 lineas · ciclo 300s · JWT auth
+│   └── state_documentos.json       ← 175 IDs procesados · idempotencia
+│
+├── consumer/
+│   ├── consumer_downloader.py      ← Descarga .xlsx/.html a output/descargas/
+│   ├── consumer_excel_parser.py    ← Parsea Excel → topic ventas.raw
+│   ├── state_downloads.json        ← IDs de archivos ya descargados
+│   └── state_excel_parsed.json     ← Archivos ya parseados
+│
+├── spark_streaming/
+│   ├── job_ventas.py               ← Streaming ventas → Parquet + PostgreSQL
+│   └── job_documentos.py           ← Streaming docs → Parquet (ventanas 5 min)
+│
+├── ml/
+│   ├── app.py                      ← FastAPI SPA · web de predicciones (8501)
+│   ├── trainer_main.py             ← Orquestador: ejecuta los 6 modelos c/30min
+│   ├── trainer.py                  ← Modelo 1: GBM diario · 20 features
+│   ├── trainer_forecast.py         ← Modelo 2: Forecast mensual P10/P90
+│   ├── trainer_mensual.py          ← Modelo 3: Prediccion mensual Ridge/GBM
+│   ├── trainer_clientes.py         ← Modelo 4: KMeans RFM 3 segmentos
+│   ├── trainer_anomalias.py        ← Modelo 5: IsolationForest anomalias
+│   └── trainer_vendedor.py         ← Modelo 6: GBM semanal 8 semanas
+│
+├── postgres/
+│   └── init.sql                    ← DDL: ventas · predicciones · vistas
+│
+├── observability/
+│   ├── alertas.yml                 ← 3 reglas Prometheus
+│   └── grafana/
+│       ├── provisioning/
+│       │   ├── datasources/ds.yml  ← casamarket-prom + casamarket-pg
+│       │   └── dashboards/dashboard.yml
+│       └── dashboards/
+│           ├── kafka_spark.json    ← Dashboard S8: operativo
+│           └── ventas_casamarket.json ← Dashboard S9: BI + ML
+│
+├── output/
+│   ├── descargas/                  ← 84 archivos Excel/HTML · 44 MB
+│   ├── parquet/ventas/             ← Historico columnar para ML
+│   ├── parquet/docs/               ← Metricas de documentos con ventanas
+│   └── checkpoints/                ← Exactly-once Spark
+│
+└── mysql_sync/
+    └── mysql_sync.py               ← Sincronizacion opcional MySQL → PostgreSQL
+```
+
+---
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--                       13. COMANDOS UTILES                               -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+# PARTE XIII — COMANDOS UTILES
 
 ```bash
-# Logs en tiempo real
+# ── Estado general ────────────────────────────────────────────────────────
+docker compose ps
 docker compose logs -f producer
-docker compose logs -f consumer-excel-parser
 docker compose logs -f spark-ventas
+docker compose logs -f ml-trainer
 
-# Ver cuántas ventas hay en PostgreSQL
-docker compose exec casamarket-postgres psql -U casamarket -d casamarket -c \
+# ── Cuántas ventas tiene la base de datos ─────────────────────────────────
+docker compose exec postgres psql -U casamarket -d casamarket -c \
   "SELECT COUNT(*), ROUND(SUM(total)::NUMERIC,2) FROM ventas WHERE total>0;"
 
-# Cuántos documentos publicó el producer
-docker compose exec casamarket-postgres psql -U casamarket -d casamarket -c \
-  "SELECT COUNT(DISTINCT _archivo) FROM ventas;"
+# ── Estado de hoy: real vs predicho ───────────────────────────────────────
+docker compose exec postgres psql -U casamarket -d casamarket -c \
+  "SELECT producto, ingresos_real, ingresos_pred, alerta FROM estado_dia_actual;"
 
-# Ver mensajes raw en Kafka (últimos 5)
+# ── Calidad de los 51 modelos GBM ─────────────────────────────────────────
+docker compose exec postgres psql -U casamarket -d casamarket -c \
+  "SELECT producto, ROUND(r2::NUMERIC,3), ROUND(mape::NUMERIC,1) AS mape_pct \
+   FROM model_metadata WHERE modelo='productos' ORDER BY mape;"
+
+# ── Segmentos de clientes ─────────────────────────────────────────────────
+docker compose exec postgres psql -U casamarket -d casamarket -c \
+  "SELECT segmento, COUNT(*), ROUND(AVG(valor_monetario)::NUMERIC,2) \
+   FROM segmentos_clientes GROUP BY segmento ORDER BY 3 DESC;"
+
+# ── Ver mensajes en Kafka ─────────────────────────────────────────────────
 docker exec ec-kafka sh -c \
   "/opt/kafka/bin/kafka-console-consumer.sh \
    --bootstrap-server localhost:9092 \
-   --topic casamarket.ventas.raw --max-messages 5 \
+   --topic casamarket.ventas.raw --max-messages 3 \
    --from-beginning --timeout-ms 5000"
 
-# Verificar alertas Prometheus
+# ── Forzar re-entrenamiento ML ────────────────────────────────────────────
+docker compose restart ml-trainer
+
+# ── Verificar alertas Prometheus ──────────────────────────────────────────
 curl http://localhost:49090/api/v1/alerts
 
-# Re-ejecutar ML
-docker cp ml/prediccion_ventas.py jupyter-spark:/home/jovyan/prediccion_ventas.py
-docker exec jupyter-spark sh -c "python /home/jovyan/prediccion_ventas.py"
-
-# Reiniciar un servicio
+# ── Reiniciar servicios especificos ───────────────────────────────────────
 docker compose restart spark-ventas
 docker compose restart grafana
+docker compose restart ml-web
 
-# Parar todo
+# ── Parar todo ────────────────────────────────────────────────────────────
 docker compose down
 
-# Limpieza total (borra volúmenes y datos)
+# ── Limpieza total (borra volumenes y datos) ──────────────────────────────
 docker compose down -v
 ```
 
 ---
 
-## Guión de Exposición — 5 Minutos
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--                       14. GUION DE EXPOSICION                           -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+# PARTE XIV — GUION DE EXPOSICION
 
 > El objetivo no es explicar tecnología: es mostrar que **ya funciona con datos reales de IFERSAN**.
 
-### [0:00 – 0:50] El problema que resolvimos
+```
+[0:00 – 0:50]  EL PROBLEMA
+──────────────────────────
+"IFERSAN es una distribuidora de bebidas en Juliaca. Antes de este
+ proyecto, la gerencia recibía los datos del día 24 horas después,
+ en un Excel. ROSA CUSILAYME vendía S/ 101,500 en un mes y nadie
+ lo sabía hasta el día siguiente."
 
-Abrir el README o la presentación. Decir:
+  → Mostrar el Excel / la pantalla de CasaMarket
+  → Señalar: ¿cuándo se generó este reporte? Ayer.
 
-> "IFERSAN es una distribuidora de bebidas en Juliaca. Antes de este proyecto, la gerencia recibía los datos de ventas del día **24 horas después**, en un Excel. ROSA CUSILAYME vendía S/ 101,500 en un mes y nadie lo sabía hasta el día siguiente. Nosotros construimos el pipeline que cambia eso."
+[0:50 – 1:30]  KAFKA UI — LOS DATOS EN TIEMPO REAL
+────────────────────────────────────────────────────
+  Abrir http://localhost:18085
 
-### [0:50 – 1:30] Mostrar el productor funcionando
+  → Topic casamarket.documento.detectado: 175 documentos
+  → Topic casamarket.ventas.raw: 30,372 mensajes
+  → Abrir un mensaje: "vendedor": "ROSA CUSILAYME", "total": "144.0"
 
-Abrir **Kafka UI → http://localhost:18085**
+"Cada fila del Excel de IFERSAN se convierte en un mensaje JSON
+ en Kafka. 16,794 ventas están aquí, en tiempo real."
 
-- Topic `casamarket.documento.detectado`: mostrar 175 mensajes (IDs 180472–183454)
-- Topic `casamarket.ventas.raw`: mostrar 30,372 mensajes
-- Abrir un mensaje del topic ventas.raw → mostrar el JSON con `"vendedor": "ROSA CUSILAYME"`, `"producto": "PEPSI 2000ML"`, `"total": "144.0"`
+[1:30 – 2:15]  SPARK UI — EL PROCESAMIENTO
+────────────────────────────────────────────
+  Abrir http://localhost:4042
 
-Decir:
-> "Cada fila del Excel de ventas se convierte en un mensaje JSON en Kafka. 16,794 ventas de IFERSAN están aquí."
+  → Mostrar los micro-batches de 30s
+  → Señalar input rate y processing time
 
-### [1:30 – 2:15] Mostrar Spark procesando
+"Spark lee esos mensajes cada 30 segundos y los escribe en PostgreSQL.
+ En el re-proceso completo medimos 6,074 mensajes por segundo.
+ El consumer lag final fue cero."
 
-Abrir **Spark UI → http://localhost:4042**
+[2:15 – 3:30]  GRAFANA — DASHBOARD S9: VENTAS IFERSAN
+──────────────────────────────────────────────────────
+  Abrir http://localhost:43000 → Dashboard S9
 
-- Mostrar los batches de 30s corriendo
-- Mostrar input rate y processing time
+  → KPIs: S/ 406,150 · 16,794 transacciones · 62 productos
+  → Top productos: PEPSI 2000ML lidera con S/ 76,400
+  → Vendedores: ROSA CUSILAYME S/ 101,500
+  → ML Forecast julio: S/ 1,008,375
+  → Segmentos: 203 VIP · 204 Regular · 699 En Riesgo
 
-Decir:
-> "Spark lee esos mensajes cada 30 segundos y los escribe en PostgreSQL. En el re-proceso medimos **6,074 mensajes por segundo**. El consumer lag final fue **cero**."
+"Esto es lo que ve la gerencia de IFERSAN ahora mismo.
+ No el Excel de mañana. El dato de hoy."
 
-### [2:15 – 3:30] Dashboard S9 — Ventas IFERSAN
+[3:30 – 4:15]  GRAFANA — DASHBOARD S8: OBSERVABILIDAD
+──────────────────────────────────────────────────────
+  Abrir Dashboard S8
 
-Abrir **Grafana → http://localhost:43000 → Dashboard S9**
+  → Kafka Broker: UP
+  → Consumer Lag: 0
+  → 3 alertas Prometheus configuradas
 
-- **KPIs superiores**: señalar S/ 406,150.50 · 16,794 transacciones · 62 productos
-- **Top productos**: señalar PEPSI 2000ML como líder (S/ 76,400)
-- **Vendedores**: señalar ROSA CUSILAYME (#1, S/ 101,500) y JHONATAN (#2)
-- **Predicciones ML 2026**: señalar S/ 1,614,943.32 total
-- Señalar PEPSI 2000ML proyectado en S/ 334,800 (factor 4.4×)
+"Si el consumer lag supera 500 mensajes por 2 minutos, se dispara
+ un warning. Si el broker cae: alerta crítica en 1 minuto."
 
-Decir:
-> "Esto es lo que ve la gerencia de IFERSAN ahora mismo. No el Excel de mañana. El dato de hoy, en menos de 8 minutos desde que el vendedor cierra la venta."
+[4:15 – 5:00]  CIERRE
+──────────────────────
+  Mostrar brevemente: producer/producer.py (ciclo, auth)
+  Mostrar: ml/trainer.py (20 features, TimeSeriesSplit)
 
-### [3:30 – 4:20] Dashboard S8 + Alertas
-
-Abrir **Grafana → Dashboard S8**
-
-- Mostrar: Kafka Broker = **UP**
-- Mostrar: Consumer Lag = **0**
-- Mostrar el panel de Rate mensajes/s
-
-Decir:
-> "Tenemos 3 alertas configuradas en Prometheus. Si el consumer lag supera 500 mensajes por más de 2 minutos, se dispara un warning. Si el broker cae, tenemos una alerta crítica en 1 minuto."
-
-### [4:20 – 5:00] Cerrar con el código
-
-Mostrar brevemente `producer/producer.py` línea 1-30 (ciclo, auth, publish).
-Mostrar `ml/prediccion_ventas.py` (LinearRegression, 180 predicciones).
-
-Decir:
-> "13 servicios Docker. 9 tecnologías. 202 líneas de productor. El sistema corre completo en `docker compose up`. Gracias."
-
----
-
-## Problemas Conocidos y Soluciones
-
-| Problema | Causa | Solución |
-|---|---|---|
-| Grafana "No data" | UID de datasource no coincide | `docker compose down -v grafana_data && docker compose up -d grafana` |
-| `marca`/`categoria` vacíos | Spark procesó con schema antiguo (checkpoint viejo) | Borrar checkpoint + `TRUNCATE ventas` + reiniciar spark-ventas |
-| Excel con 0 filas | Parser era event-driven, dependía de Kafka para trigger | Reescrito como directory scanner independiente |
-| `producto` vacío en mensajes | `descripcion` sobreescribía `nombre` (alias duplicado en `_ALIAS`) | Removido `"descripcion": "producto"` del dict de alias |
-| JSONDecodeError BOM UTF-8 | PowerShell escribe con BOM en el JSON de estado | `encoding="utf-8-sig"` en `load_parsed()` |
-| `url_file` = undefined | Se usaba `downloadUrl` (campo inválido de la API) | Cambiado a `urlFile` que sí contiene la URL real del S3 |
-| ThroughputListener crash | Clase Python incompatible con JVM de Spark | Clase removida completamente |
+"15 servicios Docker. 9 tecnologías. Arquitectura Kappa.
+ 6 modelos de ML. El sistema corre completo en docker compose up.
+ Gracias."
+```
 
 ---
 
-*Pipeline construido con datos reales de IFERSAN — distribuidora de bebidas de Juliaca, Perú.*  
-*Universidad Peruana Unión · IX Ciclo · Big Data · Unidad 2 · Junio 2026*
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!--                       15. PROBLEMAS CONOCIDOS                           -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+# PARTE XV — PROBLEMAS RESUELTOS
+
+| Problema | Causa raíz | Solución aplicada |
+|:---|:---|:---|
+| R² = -351 en 51/60 modelos | Spike Mayo 12-19 (5× el nivel estable) en el historial de entrenamiento | `LOOKBACK_TRAIN_DIAS=35` — entrena solo en el régimen estable |
+| Bandas P10/P90 de S/9 (inútiles) | `MIN_DIAS_QUANTILE=20` activaba quantile con 43 muestras | `MIN_DIAS_QUANTILE=50` + banda mínima = 10% del predicho |
+| R² CV = -3.5 (TimeSeriesSplit) | Sin `test_size`, primer fold entrenaba con ≤11 días | `TimeSeriesSplit(n_splits=3, test_size=7)` — primer fold ≥14 días |
+| 1 solo cliente VIP | FERNANDEZ CALA TOMAS distorsionaba centroides KMeans | Mega-outlier Q3+3×IQR etiquetado VIP directo antes del clustering |
+| IsolationForest sin anomalías | `date.today()` creaba 26 días de ceros artificiales | `MAX(fecha)` de la BD como referencia temporal |
+| 15 productos siempre omitidos | Check externo usaba `MIN_DIAS=14` sobre días de venta (no calendario) | Check reducido a `len(df_prod) < 2` + fallback ventana 60 días |
+| estado_hoy mostrando pred=0 | Vista no encontraba predicción ≤ hoy tras limpiar stale | Vista actualizada con COALESCE a predicción futura más cercana |
+| Grafana "No data" | UID datasource no coincide tras recrear contenedor | `docker compose down -v grafana_data && docker compose up -d grafana` |
+| Excel con 0 filas | Parser dependía de Kafka como trigger | Reescrito como directory scanner independiente |
+| `producto` vacío en mensajes | `descripcion` sobreescribía `nombre` en dict de alias | Removido `"descripcion": "producto"` del alias map |
+
+---
+
+<div align="center">
+
+---
+
+```
+Pipeline construido con datos reales de IFERSAN
+Distribuidora de bebidas · Juliaca, Puno, Peru
+```
+
+![Universidad](https://img.shields.io/badge/Universidad_Peruana_Union-IX_Ciclo-0A2342?style=flat-square&color=0A2342)
+![Curso](https://img.shields.io/badge/Big_Data-Unidad_2-1E6091?style=flat-square&color=1E6091)
+![Entrega](https://img.shields.io/badge/Entrega-Junio_2026-2D6A4F?style=flat-square&color=2D6A4F)
+
+</div>

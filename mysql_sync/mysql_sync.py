@@ -43,17 +43,28 @@ INSERT INTO ventas (
 """
 
 
-def connect_mysql():
-    return pymysql.connect(
-        host=MYSQL_HOST,
-        port=MYSQL_PORT,
-        db=MYSQL_DB,
-        user=MYSQL_USER,
-        password=MYSQL_PASSWORD,
-        charset="utf8mb4",
-        autocommit=False,
-        connect_timeout=10,
-    )
+def connect_mysql(retries: int = 0, max_retries: int = 0):
+    """Conecta a MySQL. Con max_retries>0 reintenta con backoff exponencial."""
+    attempt = 0
+    while True:
+        try:
+            return pymysql.connect(
+                host=MYSQL_HOST,
+                port=MYSQL_PORT,
+                database=MYSQL_DB,
+                user=MYSQL_USER,
+                password=MYSQL_PASSWORD,
+                charset="utf8mb4",
+                autocommit=False,
+                connect_timeout=10,
+            )
+        except pymysql.err.OperationalError as exc:
+            attempt += 1
+            if max_retries > 0 and attempt > max_retries:
+                raise
+            wait = min(30, 5 * attempt)
+            log.warning("[MySQL] No disponible (%s). Reintentando en %ds... (%d)", exc.args[1], wait, attempt)
+            time.sleep(wait)
 
 
 def connect_kafka():
@@ -129,7 +140,7 @@ def main():
     log.info("MySQL  : %s:%d / %s", MYSQL_HOST, MYSQL_PORT, MYSQL_DB)
 
     consumer = connect_kafka()
-    mysql    = connect_mysql()
+    mysql    = connect_mysql(max_retries=0)   # retry infinito hasta que MySQL esté disponible
     cursor   = mysql.cursor()
 
     insertados = 0

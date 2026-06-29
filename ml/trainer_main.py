@@ -30,6 +30,7 @@ import trainer_vendedor
 import trainer_anomalias
 import trainer_clientes
 import trainer_forecast
+import trainer_mensual
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,9 +42,13 @@ log = logging.getLogger(__name__)
 
 def main() -> None:
     log.info("=" * 70)
-    log.info("  CasaMarket — ML Trainer Service")
-    log.info("  Modelos: GBM Quantile | GBM Vendedores | IsolationForest | KMeans RFM")
-    log.info("  Forecast: Mensual P10/P90 | predicciones_mes_siguiente")
+    log.info("  CasaMarket — ML Trainer Service v3")
+    log.info("  1. GBM v3 Quantile (lag_28d, sin/cos, MAPE) por producto")
+    log.info("  2. GBM Vendedores semanal")
+    log.info("  3. IsolationForest anomalias")
+    log.info("  4. KMeans RFM clientes")
+    log.info("  5. Forecast diario → mes siguiente (predicciones_mes_siguiente)")
+    log.info("  6. Modelo mensual directo (predicciones_mensuales + ranking_mes_siguiente)")
     log.info("  Ciclo  : cada %d min", RETRAIN_INTERVAL // 60)
     log.info("=" * 70)
 
@@ -85,6 +90,12 @@ def main() -> None:
             trainer_forecast.ejecutar(engine)
         except Exception as exc:
             log.error("[TRAINER-FORECAST] Error: %s", exc)
+
+        # ── 6. Modelo mensual directo — prediccion robusta del mes siguiente ──
+        try:
+            trainer_mensual.ejecutar(engine)
+        except Exception as exc:
+            log.error("[TRAINER-MENSUAL] Error: %s", exc)
 
         log.info("[CICLO %d] Completado. Proximo en %d min.", ciclo, RETRAIN_INTERVAL // 60)
         time.sleep(RETRAIN_INTERVAL)

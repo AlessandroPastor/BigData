@@ -171,7 +171,9 @@ def ejecutar(engine: sa.Engine) -> None:
             low   = float(row.ingresos_low  or 0)
             high  = float(row.ingresos_high or 0)
             band  = round(high - low, 2)
-            cob   = round((1 - band / pred) * 100, 1) if pred > 0 else 0.0
+            # cobertura = que tan estrecha es la banda relativa a la pred (0=amplia, 100=exacta)
+            # Si band > pred => incertidumbre mayor al 100%, clampeamos a 0 para evitar negativos
+            cob   = round(max(0.0, (1 - band / pred)) * 100, 1) if pred > 0 else 0.0
             conn.execute(sql_upsert, {
                 "mes":      primer_dia,
                 "producto": row.producto,

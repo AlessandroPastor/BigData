@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS anomalias_detectadas (
     fecha             DATE NOT NULL,
     ventas_reales     NUMERIC(14,2),
     media_historica   NUMERIC(14,2),   -- promedio movil 30 dias
-    desviacion_pct    NUMERIC(8,2),    -- % de desviacion vs media
+    desviacion_pct    NUMERIC(12,2),   -- % de desviacion vs media
     score_anomalia    NUMERIC(8,4),    -- score IsolationForest (-1 a 0, mas negativo = mas anomalo)
     tipo              TEXT,            -- 'ALTA_VENTA' | 'CAIDA_VENTAS'
     detectado_en      TIMESTAMPTZ DEFAULT NOW(),
@@ -239,8 +239,15 @@ HAVING CASE WHEN hora IS NOT NULL AND hora ~ '^\d{1,2}:\d{2}'
         END IS NOT NULL
 ORDER BY dia_semana, hora_dia;
 
--- Vista: estado actual del dia (ventas acumuladas hoy vs prediccion)
+-- Vista: estado del ultimo dia disponible vs primera prediccion disponible
+-- (compatible con datos historicos donde la fecha maxima != CURRENT_DATE)
 CREATE OR REPLACE VIEW estado_dia_actual AS
+WITH ref AS (
+    SELECT MAX(fecha) AS ultimo_dia FROM ventas WHERE total > 0
+),
+primera_pred AS (
+    SELECT MIN(fecha_pred) AS fecha_pred FROM predicciones_diarias
+)
 SELECT
     v.producto,
     ROUND(SUM(v.total)::NUMERIC, 2)        AS ventas_hoy,
@@ -261,8 +268,12 @@ SELECT
         ELSE 'BAJO_META'
     END                                    AS alerta
 FROM ventas v
+JOIN ref ON v.fecha = ref.ultimo_dia
+LEFT JOIN primera_pred pp ON true
 LEFT JOIN predicciones_diarias p
-    ON TRIM(v.producto) = p.producto AND p.fecha_pred = CURRENT_DATE
-WHERE v.fecha = CURRENT_DATE AND v.total > 0
+    ON TRIM(v.producto) = p.producto AND p.fecha_pred = pp.fecha_pred
+WHERE v.total > 0
+  AND v.producto IS NOT NULL
+  AND TRIM(v.producto) != ''
 GROUP BY v.producto, p.ingresos_pred, p.ingresos_low, p.ingresos_high
 ORDER BY ventas_hoy DESC;

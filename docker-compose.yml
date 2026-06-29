@@ -271,6 +271,10 @@ services:
     environment:
       GF_SECURITY_ADMIN_PASSWORD: "casamarket"
       GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_PLUGINS_ENABLE_ALPHA: "false"
+      GF_LOG_FILTERS: "plugin.backgroundinstaller:error,dashboard-service:warn"
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
