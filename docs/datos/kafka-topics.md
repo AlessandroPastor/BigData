@@ -1,34 +1,31 @@
-# Topics de Kafka
+# Tópicos de Kafka
 
-## Configuracion del Broker
+## Configuración del broker
 
-**Imagen:** `apache/kafka:3.7.0`  
-**Modo:** KRaft (sin ZooKeeper)  
-**Cluster ID:** `4L6g3nShT-eMCtK--X86sw`  
-**UI de administracion:** `http://localhost:18085`
+**Imagen:** `apache/kafka:3.7.0` · **Modo:** KRaft (sin ZooKeeper) · **UI de administración:** `http://localhost:18085`
 
 ```
 Listeners:
-  INTERNAL: ec-kafka:9092       (comunicacion intra-docker)
-  EXTERNAL: localhost:19092     (acceso desde host)
-  CONTROLLER: ec-kafka:9093     (raft consensus)
+  INTERNAL:   ec-kafka:9092       (comunicación intra-docker)
+  EXTERNAL:   localhost:19092     (acceso desde el host)
+  CONTROLLER: ec-kafka:9093       (consenso Raft)
 ```
 
 ---
 
 ## casamarket.documento.detectado
 
-**Proposito:** Eventos de documentos detectados en el ERP con status finalizado.
+**Propósito:** eventos de documentos detectados en el ERP CasaMarket con status finalizado.
 
 | Propiedad | Valor |
 |-----------|-------|
 | Particiones | 1 |
-| Factor de replicacion | 1 |
-| Mensajes totales | **30.372** |
-| Retencion | 7 dias (default) |
-| Creacion | Auto-create habilitado |
+| Factor de replicación | 1 |
+| Mensajes totales | **30,372** |
+| Retención | 7 días (default) |
+| Creación | auto-create habilitado |
 
-### Schema del Mensaje
+### Schema del mensaje
 
 ```json
 {
@@ -38,38 +35,39 @@ Listeners:
   "status":       "Finalizado",
   "url_file":     "https://s3.amazonaws.com/casamarket-prod/...",
   "created_at":   "2026-04-27T07:32:51Z",
-  "usuario":      "admin1@tomas.com",
+  "usuario":      "<email del usuario del ERP>",
   "detectado_en": "2026-05-26T03:47:28.000000+00:00"
 }
 ```
 
-**Clave del mensaje:** ID del documento (como string UTF-8)
+**Clave del mensaje:** ID del documento (entero).
 
 ### Consumidores
 
-| Consumer Group | Componente | Offset Policy |
+| Consumer group | Componente | Offset inicial |
 |---------------|-----------|---------------|
-| `casamarket-downloader` | consumer_downloader.py | earliest |
-| Spark job_documentos | spark-streaming | earliest |
+| `casamarket-downloader` | `consumer_downloader.py` | `earliest` |
+| — (Spark) | `job_documentos.py` | `earliest` |
 
 ---
 
 ## casamarket.ventas.raw
 
-**Proposito:** Una fila de transaccion de venta por cada mensaje. Generado por el parser al procesar archivos Excel.
+**Propósito:** una fila de venta parseada por cada mensaje. Generado por el parser al procesar cada Excel/HTML descargado.
 
 | Propiedad | Valor |
 |-----------|-------|
 | Particiones | 1 |
-| Factor de replicacion | 1 |
-| Mensajes totales | **16.794** |
-| Retencion | 7 dias (default) |
+| Factor de replicación | 1 |
+| Mensajes totales | **16,794** |
+| Retención | 7 días (default) |
 
-### Schema del Mensaje
+### Schema del mensaje
 
 ```json
 {
   "fecha":           "2026-05-12",
+  "hora":            "21:30:27",
   "producto":        "PEPSI 2000ML",
   "cod_producto":    "PEP-001",
   "marca":           "LINEA PEPSI",
@@ -89,117 +87,89 @@ Listeners:
 }
 ```
 
-**Clave del mensaje:** no tiene clave definida (null)
+**Clave del mensaje:** ninguna (null) — la partición única hace que el orden de llegada se preserve igual.
 
 ### Consumidores
 
-| Consumer Group | Componente | Offset Policy |
-|---------------|-----------|---------------|
-| Spark spark-ventas | job_ventas.py | earliest |
+Este topic tiene **dos** consumidores Spark independientes, cada uno con un propósito distinto:
+
+| Consumer | Componente | Offset inicial | Para qué |
+|---------------|-----------|---------------|---|
+| `job_ventas.py` | Spark (`spark-ventas`) | `earliest` | Reconstruir el histórico completo en PostgreSQL/MySQL/Parquet |
+| `job_ml_streaming.py` | Spark (`spark-ml`) | `latest` | Disparar (cada 30s) la comparación de ventas de hoy vs predicción |
 
 ---
 
-## casamarket.public.ventas (CDC)
+## casamarket.public.ventas (CDC — opcional)
 
-**Proposito:** Cambios capturados por Debezium desde el WAL de PostgreSQL. Cada INSERT/UPDATE/DELETE en la tabla `ventas` genera un evento CDC.
+**Propósito:** cambios capturados por Debezium desde el WAL de PostgreSQL sobre la tabla `ventas`. Este topic **solo existe si alguien registró manualmente el conector** — no se crea automáticamente al levantar el stack (ver [Sincronización MySQL](mysql-sync.md)).
 
 | Propiedad | Valor |
 |-----------|-------|
-| Generado por | Debezium PostgresConnector 2.7 |
+| Generado por | Debezium `PostgresConnector` 2.7 |
 | Slot WAL | `debezium_ventas_slot` |
 | Publication | `debezium_ventas_pub` |
 | Plugin WAL | `pgoutput` |
 | Prefijo de topic | `casamarket` |
 
-### Schema del Mensaje CDC (simplificado)
+### Schema del mensaje CDC (simplificado)
 
 ```json
 {
-  "schema": { "...": "..." },
   "payload": {
     "before": null,
-    "after": {
-      "id": 1,
-      "fecha": "2026-05-12",
-      "producto": "PEPSI 2000ML",
-      "total": 144.0,
-      "...": "..."
-    },
-    "source": {
-      "version": "2.7.0.Final",
-      "connector": "postgresql",
-      "name": "casamarket",
-      "ts_ms": 1748260048000,
-      "snapshot": "false",
-      "db": "casamarket",
-      "table": "ventas"
-    },
+    "after": { "id": 1, "fecha": "2026-05-12", "producto": "PEPSI 2000ML", "total": 144.0, "...": "..." },
+    "source": { "connector": "postgresql", "db": "casamarket", "table": "ventas" },
     "op": "c",
     "ts_ms": 1748260048123
   }
 }
 ```
 
-**Operaciones CDC:** `c` = create, `u` = update, `d` = delete, `r` = read (snapshot)
+`op`: `c` = create, `u` = update, `d` = delete, `r` = snapshot inicial.
 
 ---
 
-## Topics Internos de Debezium
-
-Kafka Connect utiliza tres topics internos para persistir su estado:
-
-| Topic | Proposito |
-|-------|-----------|
-| `debezium.connect.configs` | Configuraciones de conectores |
-| `debezium.connect.offsets` | Offsets de lectura WAL |
-| `debezium.connect.status` | Estado de los conectores |
-
----
-
-## Configuracion del Conector Debezium
+## Configuración del conector Debezium (si se registra)
 
 ```json
 {
-  "name": "ventas-pg-connector",
+  "name": "pg-ventas-debezium",
   "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
   "database.hostname": "postgres",
   "database.port": "5432",
-  "database.user": "casamarket",
-  "database.password": "casamarket",
   "database.dbname": "casamarket",
   "topic.prefix": "casamarket",
   "table.include.list": "public.ventas",
   "plugin.name": "pgoutput",
   "publication.name": "debezium_ventas_pub",
   "slot.name": "debezium_ventas_slot",
-  "snapshot.mode": "initial",
-  "heartbeat.interval.ms": "10000",
-  "decimal.handling.mode": "double",
-  "time.precision.mode": "connect"
+  "snapshot.mode": "initial"
 }
 ```
 
 ---
 
-## Diagrama de Flujo de Offsets
+## Diagrama de flujo de offsets
 
 ```mermaid
 sequenceDiagram
     participant PROD as Producer
     participant K as Kafka Broker
     participant DL as Downloader
-    participant SPARK as Spark Ventas
+    participant SPV as Spark (job_ventas)
+    participant SPM as Spark (job_ml_streaming)
 
     Note over K: casamarket.documento.detectado
-    PROD->>K: offset 0..175 (docs nuevos)
-    K-->>DL: auto_commit cada mensaje
-    DL->>DL: estado local: state_downloads.json
+    PROD->>K: publica eventos de documentos nuevos
+    K-->>DL: auto_commit por mensaje consumido
 
     Note over K: casamarket.ventas.raw
-    PROD->>K: (no produce en este topic)
-    K-->>SPARK: readStream startingOffsets=earliest
-    SPARK->>SPARK: checkpoint/raw/offsets/
-    Note over SPARK: Trigger cada 30s
-    SPARK->>SPARK: procesa batch
-    SPARK->>SPARK: commit offset al checkpoint
+    K-->>SPV: readStream startingOffsets=earliest
+    SPV->>SPV: checkpoint/ventas_raw + ventas_agg
+    Note over SPV: Trigger cada 30s — reconstruye histórico completo
+
+    K-->>SPM: readStream startingOffsets=latest
+    SPM->>SPM: checkpoint/ml_streaming_v2
+    Note over SPM: Trigger cada 30s — solo dispara la re-consulta a Postgres
 ```

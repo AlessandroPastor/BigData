@@ -1,15 +1,14 @@
 # Alertas — Prometheus
 
-**Archivo:** `observability/alertas.yml`  
-**Evaluacion:** Cada 15 segundos (segun `global.evaluation_interval`)
+**Archivo:** `observability/alertas.yml` · **Evaluación:** cada 15 segundos
 
 ---
 
-## Reglas de Alerta Configuradas
+## Reglas configuradas
 
 ```yaml
 groups:
-  - name: casamarket-kafka
+  - name: kafka_alertas
     rules:
 
       - alert: KafkaConsumerLagAlto
@@ -18,8 +17,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Consumer lag alto en Kafka"
-          description: "El lag del consumer group supera 500 mensajes por mas de 2 minutos."
+          summary: "Consumer lag alto en {{ $labels.consumergroup }}"
 
       - alert: KafkaSinMensajes
         expr: rate(kafka_topic_partition_current_offset[5m]) == 0
@@ -27,8 +25,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Sin flujo de mensajes en Kafka"
-          description: "No hay nuevos mensajes en ningun topic en los ultimos 5 minutos."
+          summary: "Sin mensajes nuevos en Kafka"
 
       - alert: KafkaBrokerDown
         expr: up{job="kafka-exporter"} == 0
@@ -36,32 +33,31 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Kafka broker caido"
-          description: "El kafka-exporter no responde — el broker puede estar inactivo."
+          summary: "Kafka Exporter caído"
 ```
 
 ---
 
-## Detalle de Alertas
+## Detalle de cada alerta
 
 ```mermaid
 graph TD
     subgraph A1["KafkaConsumerLagAlto — WARNING"]
-        C1["Condicion:\nkafka_consumergroup_lag_sum > 500"]
-        D1["Duracion: 2 minutos"]
-        I1["Impacto: acumulacion de documentos\nno procesados"]
+        C1["kafka_consumergroup_lag_sum > 500"]
+        D1["Duración: 2 minutos"]
+        I1["Impacto: documentos o ventas acumulándose sin procesar"]
     end
 
     subgraph A2["KafkaSinMensajes — WARNING"]
-        C2["Condicion:\nrate(offset[5m]) == 0"]
-        D2["Duracion: 5 minutos"]
-        I2["Impacto: pipeline detenido,\nposible fallo del producer o parser"]
+        C2["rate(offset[5m]) == 0"]
+        D2["Duración: 5 minutos"]
+        I2["Impacto: pipeline detenido — producer caído o API del ERP inaccesible"]
     end
 
     subgraph A3["KafkaBrokerDown — CRITICAL"]
-        C3["Condicion:\nup{job='kafka-exporter'} == 0"]
-        D3["Duracion: 1 minuto"]
-        I3["Impacto: todos los servicios\ndependientes fallan"]
+        C3["up{job='kafka-exporter'} == 0"]
+        D3["Duración: 1 minuto"]
+        I3["Impacto: todos los servicios dependientes fallan"]
     end
 
     style A1 fill:#FFF8E1,stroke:#F57F17
@@ -69,37 +65,26 @@ graph TD
     style A3 fill:#FFEBEE,stroke:#C62828
 ```
 
-| Alerta | Severidad | Tiempo para disparar | Causa tipica |
+| Alerta | Severidad | Tiempo para disparar | Causa típica |
 |--------|-----------|---------------------|-------------|
-| KafkaConsumerLagAlto | WARNING | 2 min | Consumer detenido o lento, carga alta |
-| KafkaSinMensajes | WARNING | 5 min | Producer caido, API del ERP inaccesible |
-| KafkaBrokerDown | CRITICAL | 1 min | Contenedor ec-kafka detenido |
+| `KafkaConsumerLagAlto` | WARNING | 2 min | Spark detenido o pico de carga de documentos |
+| `KafkaSinMensajes` | WARNING | 5 min | `producer.py` caído o la API del ERP inaccesible |
+| `KafkaBrokerDown` | CRITICAL | 1 min | Contenedor `ec-kafka` detenido |
+
+Nota importante: estas 3 reglas cubren únicamente la **capa de infraestructura** (Kafka). No hay alertas de Prometheus sobre la calidad de las predicciones de ML — ese control de calidad vive en la sección "Precisión del Sistema" del dashboard de negocio y en la tabla `model_metadata`, no en Alertmanager.
 
 ---
 
-## Consultar alertas en Prometheus
+## Consultar alertas
 
 ```bash
-# Ver alertas activas
 curl http://localhost:49090/api/v1/alerts
-
-# Ver reglas cargadas
 curl http://localhost:49090/api/v1/rules
-
-# Verificar estado de un target
 curl http://localhost:49090/api/v1/targets
 ```
 
 ---
 
-## Integracion con Grafana
+## Integración con Grafana
 
-Las alertas de Prometheus pueden visualizarse en Grafana mediante el panel de tipo **Alert list** o configurando un **Contact point** (email, Slack, webhook) desde `Alerting > Contact points` en la interfaz de Grafana (`http://localhost:43000`).
-
-El dashboard `kafka_spark.json` incluye un panel de **Consumer Lag Gauge** con umbrales visuales:
-
-| Rango | Color |
-|-------|-------|
-| 0 — 100 | Verde |
-| 100 — 500 | Amarillo |
-| 500+ | Rojo |
+El dashboard "CasaMarket — Kafka + Spark S8" incluye un panel de tipo **Alert list** (`Alertas activas S8`) que muestra el estado en vivo de las 3 reglas. Para notificaciones (email, Slack, webhook) hay que configurar un **Contact point** desde `Alerting > Contact points` en la interfaz de Grafana — no viene provisionado por defecto en este proyecto.

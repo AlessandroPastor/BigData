@@ -1,69 +1,65 @@
 # Prometheus
 
-**Imagen:** `prom/prometheus:latest`  
-**Contenedor:** `prometheus`  
-**Puerto host:** `49090`  
-**URL:** `http://localhost:49090`
+**Imagen:** `prom/prometheus:latest` · **Contenedor:** `prometheus`
+**Puerto host:** `49090` · **URL:** `http://localhost:49090`
 
 ---
 
-## Configuracion
+## Configuración
 
 **Archivo:** `observability/prometheus.yml`
 
 ```yaml
 global:
-  scrape_interval:     15s
+  scrape_interval: 15s
   evaluation_interval: 15s
 
 rule_files:
-  - "alertas.yml"
+  - alertas.yml
 
 scrape_configs:
-  - job_name: "kafka-exporter"
+  - job_name: 'kafka-exporter'
     static_configs:
-      - targets: ["kafka-exporter:9308"]
+      - targets: ['kafka-exporter:9308']
+    metrics_path: /metrics
 
-  - job_name: "prometheus"
+  - job_name: 'prometheus'
     static_configs:
-      - targets: ["prometheus:9090"]
+      - targets: ['localhost:9090']
 ```
 
 ---
 
-## Metricas Expuestas por kafka-exporter
+## Métricas expuestas por kafka-exporter
 
-El contenedor `kafka-exporter` convierte las metricas internas de Kafka a formato Prometheus. Principales metricas disponibles:
+`kafka-exporter` traduce las métricas internas de Kafka (JMX) a formato Prometheus.
 
-### Metricas de Broker
+### Métricas de broker
 
-| Metrica | Descripcion |
+| Métrica | Descripción |
 |---------|-------------|
-| `kafka_brokers` | Numero de brokers activos |
-| `up{job="kafka-exporter"}` | Estado del exporter (1=activo, 0=caido) |
+| `kafka_brokers` | Número de brokers activos |
+| `up{job="kafka-exporter"}` | Estado del exporter (1=activo, 0=caído) |
 
-### Metricas de Topics
+### Métricas de topics
 
-| Metrica | Descripcion |
+| Métrica | Descripción |
 |---------|-------------|
-| `kafka_topic_partitions` | Numero de particiones por topic |
-| `kafka_topic_partition_current_offset` | Offset actual por particion |
-| `kafka_topic_partition_oldest_offset` | Offset mas antiguo disponible |
-| `kafka_topic_partition_leader` | ID del broker lider |
-| `kafka_topic_partition_replicas` | Replicas configuradas |
-| `kafka_topic_partition_in_sync_replica` | Replicas sincronizadas |
+| `kafka_topic_partitions` | Número de particiones por topic |
+| `kafka_topic_partition_current_offset` | Offset actual por partición |
+| `kafka_topic_partition_oldest_offset` | Offset más antiguo disponible |
 
-### Metricas de Consumer Groups
+### Métricas de consumer groups
 
-| Metrica | Descripcion |
+| Métrica | Descripción |
 |---------|-------------|
 | `kafka_consumergroup_current_offset` | Offset comprometido por el consumer group |
-| `kafka_consumergroup_lag` | Lag por particion |
+| `kafka_consumergroup_lag` | Lag por partición |
 | `kafka_consumergroup_lag_sum` | Lag total del consumer group |
 
 ---
 
-## Consultas PromQL Utiles
+## Consultas PromQL usadas en el dashboard S8
 
 ```promql
 # Estado del broker
@@ -75,27 +71,24 @@ kafka_consumergroup_lag_sum{consumergroup="casamarket-downloader"}
 # Rate de mensajes por segundo en ventas.raw
 rate(kafka_topic_partition_current_offset{topic="casamarket.ventas.raw"}[5m])
 
-# Offset actual del topic de documentos
+# Offset actual de cada topic
 kafka_topic_partition_current_offset{topic="casamarket.documento.detectado"}
-
-# Diferencia entre offset producido y consumido (lag manual)
 kafka_topic_partition_current_offset{topic="casamarket.ventas.raw"}
-- kafka_consumergroup_current_offset{topic="casamarket.ventas.raw"}
 ```
 
 ---
 
-## Retencion de Datos
+## Retención de datos
 
-| Parametro | Valor |
+| Parámetro | Valor |
 |-----------|-------|
-| Almacenamiento | `/prometheus` (volumen Docker) |
-| Retencion default | 15 dias |
+| Almacenamiento | volumen Docker `prometheus_data` |
+| Retención | default de Prometheus (15 días) |
 | Formato | TSDB (bloques de 2h) |
 
 ---
 
-## Diagrama de Scrape
+## Ciclo de scrape
 
 ```mermaid
 sequenceDiagram
@@ -105,10 +98,10 @@ sequenceDiagram
 
     loop Cada 15 segundos
         PROM->>EXP: GET /metrics
-        EXP->>KAFKA: Fetch broker/topic/consumer metrics
-        KAFKA-->>EXP: metricas internas JMX
-        EXP-->>PROM: texto Prometheus exposition format
+        EXP->>KAFKA: consulta métricas broker/topic/consumer (JMX)
+        KAFKA-->>EXP: métricas internas
+        EXP-->>PROM: texto en formato Prometheus
         PROM->>PROM: almacena en TSDB local
-        PROM->>PROM: evalua alertas.yml
+        PROM->>PROM: evalúa alertas.yml
     end
 ```

@@ -1,171 +1,243 @@
-# Prediccion ML — Linear Regression
+# Los 6 Modelos de Machine Learning
 
-**Archivo:** `ml/prediccion_ventas.py` — 154 lineas  
-**Libreria:** `scikit-learn LinearRegression`  
-**Entrada:** PostgreSQL tabla `ventas`  
-**Salida:** PostgreSQL tabla `predicciones_2026` (180 registros)
+**Servicio:** `ml-trainer` — reentrena los 6 modelos cada 30 minutos (`RETRAIN_INTERVAL = 1800s`)
+**Entrada de todos los modelos:** la tabla PostgreSQL `ventas` (16,794 filas reales de IFERSAN)
+**Librería:** scikit-learn 1.4+
 
----
-
-## Responsabilidad
-
-Genera predicciones de ingresos y unidades vendidas para los 15 productos de mayor ingreso historico, proyectando los 12 meses del ano 2026 (enero a diciembre). Utiliza regresion lineal simple sobre el tiempo (fecha ordinal) como variable predictora.
+Si quieres entender primero cómo llegan esas 16,794 filas a la tabla `ventas` antes de que cualquier modelo las toque, revisa [¿De dónde viene la data?](../datos/origen-datos.md).
 
 ---
 
-## Pipeline de Machine Learning
+## Por qué 6 modelos y no 1
+
+La versión inicial del proyecto (todavía presente en el repo como código legado, `ml/prediccion_ventas.py`) usaba una única `LinearRegression` por producto entrenada con apenas 2 puntos mensuales — una proyección de tendencia, no una predicción seria. El pipeline actual reemplaza eso con 6 modelos especializados, cada uno resolviendo una pregunta de negocio distinta y usando el algoritmo que mejor se ajusta a esa pregunta:
 
 ```mermaid
-flowchart TD
-    PG_IN["PostgreSQL\ntabla ventas\n16.794 filas"]
+flowchart LR
+    V["Tabla ventas\n(PostgreSQL)"]
+    M1["1. GBM diario\npor producto"]
+    M2["2. Forecast\nmensual agregado"]
+    M3["3. Modelo mensual\ndirecto"]
+    M4["4. KMeans RFM\nclientes"]
+    M5["5. IsolationForest\nanomalías"]
+    M6["6. GBM semanal\nvendedores"]
 
-    subgraph ETL["ETL — Preparacion de datos"]
-        QUERY["SELECT producto, DATE_TRUNC('month', fecha),\nSUM(total) as ingresos, SUM(cantidad) as unidades\nGROUP BY mes, producto"]
-        PIVOT["pivot: mes x producto → ingresos"]
-        TOP15["Top 15 productos\npor ingresos totales"]
-    end
+    V --> M1 --> M2
+    M1 --> M3
+    V --> M4
+    V --> M5
+    V --> M6
 
-    subgraph TRAIN["Entrenamiento — Por cada producto"]
-        PREP["X = fecha.toordinal()\nrelativo al primer mes\nY = ingresos mensuales"]
-        CHECK{"puntos de\ndatos >= 2?"}
-        LR["LinearRegression\nfit(X, Y)"]
-        AVG["prediccion = media(Y)\n(fallback con 1 dato)"]
-        R2["r2_score(Y, Y_pred)\ncalcula bondad de ajuste"]
-    end
-
-    subgraph PREDICT["Prediccion 2026"]
-        MONTHS["12 meses\nEnero → Diciembre 2026\ncomo fecha ordinal relativa"]
-        PRED_ING["ingresos_pred = model.predict(X_2026)"]
-        PRED_UNI["unidades_pred = ingresos_pred / precio_medio_historico"]
-        REAL["imputa ingresos_real\ndonde existen datos historicos"]
-    end
-
-    subgraph SAVE["Persistencia"]
-        TRUNC["TRUNCATE predicciones_2026"]
-        INSERT["pandas.DataFrame.to_sql()\n'predicciones_2026'\nif_exists='append'\n180 filas"]
-    end
-
-    PG_IN --> QUERY --> PIVOT --> TOP15
-    TOP15 --> PREP --> CHECK
-    CHECK -->|"Si"| LR --> R2
-    CHECK -->|"No"| AVG
-    R2 --> MONTHS --> PRED_ING --> PRED_UNI --> REAL
-    AVG --> PRED_ING
-    REAL --> TRUNC --> INSERT
-
-    style PG_IN fill:#F3E5F5,stroke:#4A148C
-    style ETL fill:#E3F2FD,stroke:#1565C0
-    style TRAIN fill:#E8F5E9,stroke:#1B5E20
-    style PREDICT fill:#FFF8E1,stroke:#F57F17
-    style SAVE fill:#FCE4EC,stroke:#880E4F
+    style V fill:#F3E5F5,stroke:#4A148C
+    style M1 fill:#FCE4EC,stroke:#880E4F
 ```
+
+`trainer_main.py` los ejecuta en este orden, cada uno en su propio `try/except` para que un modelo que falle no tumbe a los demás:
+
+1. `trainer.py` (Modelo 1, productos)
+2. `trainer_vendedor.py` (Modelo 6, vendedores)
+3. `trainer_anomalias.py` (Modelo 5, anomalías)
+4. `trainer_clientes.py` (Modelo 4, clientes)
+5. `trainer_forecast.py` (Modelo 2, forecast mensual — depende de que el Modelo 1 ya haya corrido)
+6. `trainer_mensual.py` (Modelo 3, modelo mensual directo)
 
 ---
 
-## Schema de la Tabla predicciones_2026
+## Modelo 1 — GBM diario por producto
 
-```sql
-CREATE TABLE predicciones_2026 (
-    id           SERIAL PRIMARY KEY,
-    producto     TEXT,
-    mes          DATE,        -- primer dia del mes: 2026-01-01
-    ingresos_real   NUMERIC, -- NULL si no hay datos historicos para ese mes
-    ingresos_pred   NUMERIC, -- prediccion del modelo
-    unidades_pred   NUMERIC, -- ingresos_pred / precio_medio
-    modelo          TEXT,    -- 'LinearRegression' o 'promedio'
-    r2_score        NUMERIC, -- R² del ajuste (NULL si modelo=promedio)
-    generado_en     TIMESTAMPTZ
-);
+**Archivo:** `ml/trainer.py` (672 líneas) · **Algoritmo:** `GradientBoostingRegressor`
+**Objetivo:** predecir los ingresos y unidades diarias de cada producto para los próximos 62 días, con banda de confianza P10/P90.
+
+### El problema que forzó el diseño actual
+
+```
+Mayo 12-19: ventas S/ 9,000-13,000/día   (límite de la API del ERP elevado temporalmente)
+Mayo 20+  : ventas S/ 2,500-3,000/día    (régimen operativo estable)
 ```
 
-**Volumen:** 15 productos x 12 meses = **180 registros**
+Entrenar con los 60 días completos hacía que el modelo aprendiera el pico de mayo como si fuera el patrón normal, produciendo predicciones oscilantes e inútiles (R² = -351 en 51 de 60 productos). La solución: **`LOOKBACK_TRAIN_DIAS = 35`** — entrenar solo con los últimos 35 días, que caen dentro del régimen estable, con un fallback a 60 días si esa ventana no alcanza el mínimo de muestras.
+
+### Hiperparámetros exactos
+
+| Parámetro | Valor | Razón |
+|:---|:---|:---|
+| `LOOKBACK_TRAIN_DIAS` | 35 días | Aísla el régimen operativo estable |
+| `MIN_DIAS` | 14 | Mínimo de días para intentar entrenar |
+| `n_estimators` | 80 / 200 / 250 | Adaptativo: 80 si hay &lt;30 muestras, 200 si &lt;50, 250 si ≥50 |
+| `max_depth` | 3 | Evita memorizar ruido diario |
+| `learning_rate` | 0.08 | Convergencia lenta = más robusto |
+| `subsample` | 0.8 | Bagging: 80% de filas por árbol |
+| `min_samples_leaf` | 3 | Regularización adicional |
+| `max_features` | 0.8 | Reduce varianza entre árboles |
+| Clip de outliers | mediana + 3σ | Capea picos residuales dentro de la ventana de 35 días |
+| `MIN_DIAS_QUANTILE` | 50 | Con menos días, las bandas P10/P90 quedaban absurdamente estrechas (±S/9) |
+| `MIN_BAND_RATIO` | 10% del predicho | Si el quantile da una banda más angosta que eso, se usa el fallback `pred ± 1.5·MAE` |
+
+### Las 20 features de entrenamiento
+
+```
+Calendario:    dia_semana · dia_mes · semana_mes · es_fin_semana
+Estacional:    mes_sin · mes_cos · dia_anio_sin · dia_anio_cos      (codificación cíclica: no hay salto dic→ene)
+Lags:          lag_1d · lag_3d · lag_7d · lag_14d · lag_21d · lag_28d
+Promedios:     rolling_3d · rolling_7d · rolling_14d · rolling_28d
+Tendencia:     tendencia_7d (pendiente lineal de 7 días) · pct_change_7d
+```
+
+### Validación temporal
+
+`TimeSeriesSplit(n_splits, test_size=7)`, donde `n_splits` es **adaptativo** entre 2 y 3 según cuántos días de entrenamiento hay disponibles (`n_splits = min(3, max(2, (n_dias - MIN_DIAS) // 7))`) — no siempre son 3 folds fijos. Cada fold de validación cubre exactamente 7 días, garantizando que el primer fold de entrenamiento tenga al menos 14 días.
+
+### Resultados medidos
+
+| Métrica | Antes (v1, 60 días) | Ahora (v3, 35 días) |
+|:---|:---|:---|
+| Productos entrenados | 60/62 | 51/62 |
+| R² promedio | -351.0 | -0.34 |
+| Productos con R² &lt; -2 | 51/60 | 0/51 |
+| MAPE promedio | miles de % | 6.9% |
+| MAPE rango | — | 0.4% – 33.3% |
+
+Los 11 productos omitidos solo vendieron durante el pico de mayo 12-19 y no tienen historial en el régimen estable — correctamente excluidos en vez de forzar un modelo sin datos confiables.
+
+### Salida
+
+Escribe en `predicciones_diarias` (UPSERT en `producto, fecha_pred`) y en `model_metadata` (`modelo='productos'`), y mantiene dos vistas SQL: `ranking_proximos_7d` y `estado_dia_actual` (la misma lógica de alertas de 4 niveles que usa `job_ml_streaming.py`).
 
 ---
 
-## Proceso Detallado
+## Modelo 2 — Forecast mensual agregado
 
-### 1. Extraccion de datos
+**Archivo:** `ml/trainer_forecast.py` (195 líneas) · No entrena ningún modelo nuevo: agrega el Modelo 1.
 
-```python
-df = pd.read_sql("""
-    SELECT
-        DATE_TRUNC('month', fecha)::DATE AS mes,
-        producto,
-        SUM(total) AS ingresos,
-        SUM(cantidad) AS unidades
-    FROM ventas
-    WHERE fecha IS NOT NULL AND total > 0
-    GROUP BY 1, 2
-    ORDER BY 1
-""", conn)
-```
+Suma las 62 predicciones diarias del Modelo 1 correspondientes al mes calendario siguiente (`HAVING COUNT(*) >= 10` días predichos por producto) y calcula `band_width = high - low` y `cobertura_pct` como medida de qué tan angosta es la banda de confianza relativa a la predicción.
 
-### 2. Seleccion del Top 15
-
-```python
-top_productos = (
-    df.groupby("producto")["ingresos"]
-    .sum()
-    .sort_values(ascending=False)
-    .head(15)
-    .index.tolist()
-)
-```
-
-### 3. Regresion lineal por producto
-
-```python
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import r2_score
-
-# X = numero de mes relativo (0, 1, 2, ...)
-X = np.array(
-    [(d.toordinal() - fechas[0].toordinal()) for d in fechas]
-).reshape(-1, 1)
-Y = np.array(ingresos)
-
-model = LinearRegression()
-model.fit(X, Y)
-r2 = r2_score(Y, model.predict(X))
-```
-
-### 4. Prediccion para 2026
-
-```python
-meses_2026 = pd.date_range("2026-01-01", periods=12, freq="MS")
-X_future = np.array(
-    [(d.toordinal() - fechas[0].toordinal()) for d in meses_2026]
-).reshape(-1, 1)
-predicciones = model.predict(X_future)
-```
+Escribe en `predicciones_mes_siguiente` y mantiene tres vistas: `forecast_diario_total`, `forecast_resumen_mes` y `forecast_top_productos_mes` (esta última compara la predicción del mes siguiente contra lo real del mes en curso).
 
 ---
 
-## Resultados del Modelo
+## Modelo 3 — Modelo mensual directo
 
-| Metrica | Valor |
-|---------|-------|
-| Productos modelados | 15 |
-| Meses proyectados | 12 (Ene–Dic 2026) |
-| Total predicciones | 180 registros |
-| Proyeccion ingresos 2026 (Top 15) | **S/ 1.614.943,32** |
-| Producto lider proyectado | PEPSI 2000ML |
-| Proyeccion PEPSI 2000ML (Dic 2026) | **S/ 334.800** |
+**Archivo:** `ml/trainer_mensual.py` (404 líneas) · **Objetivo:** predecir el total mensual por producto directamente sobre series mensuales, sin acumular el error de 31 pasos recursivos del Modelo 1.
 
-### Top Productos Proyectados para Diciembre 2026
+El algoritmo usado depende de cuántos meses completos de historial tiene cada producto:
 
-| Producto | Ingresos Proyectados |
-|---------|---------------------|
-| PEPSI 2000ML | S/ 334.800 |
-| INCA KOLA 1.5L | S/ 198.500 |
-| PEPSI 1.5L | S/ 156.200 |
-| COCA COLA 3L | S/ 143.100 |
-| FANTA NARANJA 1.5L | S/ 89.400 |
+| Historia disponible | Método | Banda de confianza |
+|:---|:---|:---|
+| 1 mes | Baseline: `(total_mes / días_con_venta) × días_del_mes` | ±40% |
+| 2 meses | Fórmula de tendencia manual: `último_mes × (1 + crecimiento%)` | ±30% |
+| 3–4 meses | `Ridge(alpha=1.0)` sobre 7 features (mes anterior, 2 meses atrás, promedio histórico, crecimiento %, mes numérico, sin/cos) | Desviación estándar de residuos Ridge |
+| ≥5 meses | `GradientBoostingRegressor` (árboles y profundidad adaptativos al tamaño: 15 árboles/profundidad 1 con ≤4 muestras, hasta 60 árboles/profundidad 2 con más) | Igual que arriba, vía residuos |
+| ≥9 meses (`n_samples≥8`) | Igual que arriba, más quantile regression P10/P90 con GBM | Bandas del propio quantile |
+
+**Validación:** `LeaveOneOut()` — se aplica solo desde 3 meses de historia en adelante (con 1–2 meses la confianza queda fija en BAJA/MEDIA sin correr CV). El MAPE de LOO define el nivel de confianza reportado: `< 15% → ALTA`, `< 35% → MEDIA`, si no `BAJA`.
+
+> Esta validación es deliberadamente honesta: entrenar un GBM de 15 árboles sobre 4 puntos y medir el error de entrenamiento da 0% (sobreajuste perfecto). LOO separa un mes, entrena con el resto, predice el mes separado y mide el error real.
+
+Escribe en `predicciones_mensuales` (con las columnas `confianza` y `metodo` explícitas) y mantiene la vista `ranking_mes_siguiente`, que es la fuente principal del panel de ranking en `ml-web`.
+
+> Estado actual con el volumen de datos de este proyecto (poco más de un mes completo): la mayoría de productos caen en confianza BAJA — mejorará automáticamente mes a mes conforme se acumule más historial, sin cambiar una línea de código.
 
 ---
 
-## Limitaciones del Modelo
+## Modelo 4 — Segmentación de clientes (RFM + KMeans)
 
-> El modelo usa solo **2 meses de datos historicos** (Abril–Mayo 2026). Con tan pocos puntos, la regresion lineal extrapola tendencias recientes. Los resultados deben interpretarse como **proyecciones de tendencia** y no como predicciones estadisticamente robustas.
+**Archivo:** `ml/trainer_clientes.py` (271 líneas) · **Algoritmo:** `KMeans(n_clusters=3)` + `StandardScaler`
+**Objetivo:** clasificar los 1,106 clientes en VIP / Regular / En Riesgo.
 
-El fallback a media simple se activa cuando un producto tiene menos de 2 registros historicos.
+**Métricas RFM** calculadas por SQL directamente sobre `ventas`: Recencia (`CURRENT_DATE - MAX(fecha)`), Frecuencia (`COUNT(*)`), Monetario (`SUM(total)`).
+
+### El problema del mega-outlier
+
+Un solo cliente (16,794 transacciones en 9 días, S/ 406,151 en total — casi el 100% del volumen del dataset) distorsionaba tanto los centroides de KMeans que el resultado era 1 cliente VIP y los otros 1,105 mezclados en el mismo cluster, sin distinción real.
+
+**Solución:** antes de correr KMeans, se detectan mega-outliers con `umbral = Q3 + 3·IQR` sobre `valor_monetario`. Esos clientes se etiquetan `VIP` directamente (`cluster_id = -1`) y quedan fuera del clustering; KMeans corre solo sobre los clientes restantes.
+
+### Etiquetado automático de clusters
+
+- **VIP** = el cluster (entre los normales) con mayor `valor_monetario` promedio
+- **En Riesgo** = de los clusters restantes, el de mayor `recencia_dias` promedio (no compra hace más tiempo)
+- **Regular** = el cluster restante
+
+`MIN_CLIENTES = 10`: si hay menos clientes que ese mínimo, todos se etiquetan `Regular` sin correr KMeans.
+
+### Resultados
+
+| Segmento | Clientes | Recencia media | Frecuencia media | Valor medio |
+|:---:|:---:|:---:|:---:|:---:|
+| VIP | 203 | 2 días | 683 transacciones | S/ 7,662 |
+| Regular | 204 | 1 día | 70 transacciones | S/ 439 |
+| En Riesgo | 699 | 45 días | 15 transacciones | S/ 329 |
+
+Escribe en `segmentos_clientes` (UPSERT en `cliente`).
+
+---
+
+## Modelo 5 — Detección de anomalías
+
+**Archivo:** `ml/trainer_anomalias.py` (248 líneas) · **Algoritmo:** `IsolationForest(contamination=0.05, n_estimators=100)`
+**Objetivo:** identificar días con ventas anormalmente altas o bajas por producto.
+
+**Features:** `ingresos, lag_1d, rolling_7d, rolling_14d, z_score` (todas escaladas con `StandardScaler`), calculadas sobre una ventana de `LOOKBACK_DIAS = 60` días por producto.
+
+### Por qué la referencia temporal es `MAX(fecha)` de la base y no `date.today()`
+
+```
+Los datos terminan el 19 de mayo. Si "hoy" es una fecha muy posterior,
+usar date.today() como referencia crea decenas de días de ceros artificiales
+entre el último dato real y "hoy". El IsolationForest aprende que cero es
+"normal" y deja de detectar cualquier anomalía real dentro del periodo con datos.
+```
+
+Por eso el modelo usa siempre `MAX(fecha) FROM ventas` como ancla temporal — ve exactamente los 60 días de datos reales, sin huecos artificiales.
+
+### Clasificación por desviación sobre la media móvil de 14 días
+
+```python
+if ventas > media_14d * 1.5:
+    tipo = "ALTA_VENTA"
+elif ventas < media_14d * 0.4:
+    tipo = "CAIDA_VENTAS"
+else:
+    tipo = "INUSUAL"   # anomalía estadística sin un patrón de negocio claro
+```
+
+**Resultado:** 155 anomalías detectadas en 56 productos. Escribe en `anomalias_detectadas` (UPSERT en `producto, fecha`).
+
+---
+
+## Modelo 6 — Predicción por vendedor
+
+**Archivo:** `ml/trainer_vendedor.py` (318 líneas) · **Algoritmo:** `GradientBoostingRegressor` sobre series semanales
+**Objetivo:** forecast de ingresos semanales por vendedor para las próximas 8 semanas (`N_SEMANAS = 8`).
+
+**Features (8):** `semana_anio, mes, lag_1w, lag_2w, lag_3w, lag_4w, rolling_3w, n_transacciones_lag1w`.
+
+Quantile regression P10/P90 solo se activa con `≥20 semanas` de historial — con menos, las bandas quedaban absurdamente estrechas; el fallback es `pred ± 1.5·MAE`.
+
+### Por qué el forecast arranca desde el último dato real, no desde "el próximo lunes de hoy"
+
+```
+Si los datos terminan en la semana del 16-22 de un mes y "hoy" cae más adelante,
+calcular el forecast desde "hoy" saltaría la semana intermedia sin datos, y los
+lags del modelo (lag_1w, lag_2w...) apuntarían al final de los datos reales como
+si fueran "la semana pasada" cuando en realidad no lo son.
+```
+
+Solución: `semana_inicio = último_dato_en_BD + 1 semana` — el forecast continúa exactamente donde terminan los datos, sin huecos ni lags desalineados.
+
+Escribe en `predicciones_vendedor` y en `model_metadata` (`modelo='vendedores'`).
+
+---
+
+## Tabla `model_metadata`: quién la alimenta
+
+Vale la pena aclarar esto porque el esquema de la tabla sugiere que los 4 modelos principales reportan ahí, pero en la práctica solo dos lo hacen:
+
+| Modelo | ¿Escribe en `model_metadata`? |
+|---|:---:|
+| 1 — GBM productos | Sí (`modelo='productos'`) |
+| 6 — GBM vendedores | Sí (`modelo='vendedores'`) |
+| 2 — Forecast mensual | No (es agregación, no entrena) |
+| 3 — Mensual directo | No (reporta `confianza`/`metodo` en su propia tabla) |
+| 4 — Clientes (KMeans) | No (no aplica R²/MAE a clustering) |
+| 5 — Anomalías (IsolationForest) | No (no aplica R²/MAE a detección de outliers) |

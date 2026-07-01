@@ -1,124 +1,114 @@
-# Predicciones ML 2026
+# Predicciones ML
 
-**Modelo:** LinearRegression (scikit-learn)  
-**Productos modelados:** 15 (mayor ingreso historico)  
-**Periodo proyectado:** Enero — Diciembre 2026  
-**Total de predicciones:** 180 registros
+Esta página resume qué produce cada uno de los 6 modelos. El detalle de algoritmos, hiperparámetros y decisiones de diseño está en [Los 6 Modelos de ML](../componentes/ml-prediccion.md); esta página se enfoca en **qué sale** de cada uno.
 
 ---
 
-## Proyeccion de Ingresos — Top 15 Productos 2026
+## Modelo 1 — GBM diario por producto
 
-```mermaid
-xychart-beta horizontal
-    title "Proyeccion Ingresos Anuales 2026 (S/)"
-    x-axis ["PEPSI 2000ML","INCA KOLA 1.5L","PEPSI 1.5L","COCA COLA 3L","FANTA 1.5L","PEPSI 500ML","SPRITE 1.5L","AGUA SAN MATEO","OTROS 7"]
-    y-axis "Ingresos proyectados S/" 0 --> 360000
-    bar [334800, 198500, 156200, 143100, 89400, 78200, 64300, 52100, 498343]
-```
-
-**Total proyectado Top 15:** S/ 1.614.943,32
-
----
-
-## Tendencia Mensual Proyectada 2026
-
-```mermaid
-xychart-beta
-    title "Ingresos Proyectados por Mes — Top 15 Productos (S/)"
-    x-axis ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
-    y-axis "S/" 80000 --> 200000
-    line [98200, 104500, 111300, 118700, 126400, 131200, 138900, 145600, 152300, 158900, 167400, 161533]
-```
-
-> La tendencia ascendente refleja la extrapolacion lineal basada en el crecimiento observado entre Abril y Mayo 2026.
-
----
-
-## Comparacion Real vs Prediccion — Top 10
-
-| Producto | Ingresos Reales (Abr–May) | Proyeccion 2026 | Factor x |
-|---------|--------------------------|-----------------|---------|
-| PEPSI 2000ML | S/ 76.400 | S/ 334.800 | 4.4x |
-| INCA KOLA 1.5L | S/ 52.300 | S/ 198.500 | 3.8x |
-| PEPSI 1.5L | S/ 48.100 | S/ 156.200 | 3.2x |
-| COCA COLA 3L | S/ 42.700 | S/ 143.100 | 3.4x |
-| FANTA NARANJA 1.5L | S/ 31.200 | S/ 89.400 | 2.9x |
-| PEPSI 500ML | S/ 28.900 | S/ 78.200 | 2.7x |
-| SPRITE 1.5L | S/ 24.500 | S/ 64.300 | 2.6x |
-| AGUA SAN MATEO 600ML | S/ 19.800 | S/ 52.100 | 2.6x |
-| INCA KOLA 500ML | S/ 17.600 | S/ 46.900 | 2.7x |
-| PEPSI LIGHT 1.5L | S/ 14.300 | S/ 38.200 | 2.7x |
-
----
-
-## Metodologia del Modelo
+**Salida:** 62 días de predicción por producto, con banda P10/P90, en la tabla `predicciones_diarias`.
 
 ```mermaid
 flowchart TD
-    subgraph INPUT["Datos de entrada"]
-        SQL["SELECT mes, producto, SUM(total)\nFROM ventas\nGROUP BY 1, 2"]
-        HIST["2 puntos temporales:\nAbril 2026 | Mayo 2026"]
-    end
+    IN["Tabla ventas\n(agrupada por día/producto)"]
+    FEAT["20 features:\ncalendario + estacionalidad cíclica\n+ lags 1-28d + rolling + tendencia"]
+    GBM["GradientBoostingRegressor\nn_estimators adaptativo · max_depth=3"]
+    Q["Quantile regression P10/P90\n(solo si hay ≥50 días de historia)"]
+    OUT["predicciones_diarias\n62 días × producto"]
 
-    subgraph MODEL["Modelo por producto"]
-        X["X = fecha.toordinal() - fecha_base\n[0, 30] (dias relativos)"]
-        Y["Y = ingresos_mensuales"]
-        FIT["LinearRegression.fit(X, Y)\ny = a*x + b"]
-        R2["r2_score(Y, y_pred)\nmide bondad del ajuste"]
-    end
-
-    subgraph PRED["Prediccion"]
-        F2026["X_future = ordinal de cada\nmes 2026 - fecha_base"]
-        YPRED["y_pred = model.predict(X_future)"]
-        UNITS["unidades_pred =\ny_pred / precio_medio_historico"]
-    end
-
-    subgraph OUTPUT["Salida"]
-        TABLE["INSERT INTO predicciones_2026\n180 registros\n(15 productos x 12 meses)"]
-    end
-
-    INPUT --> MODEL --> PRED --> OUTPUT
+    IN --> FEAT --> GBM --> OUT
+    GBM --> Q --> OUT
 ```
+
+**Resultado medido:** MAPE promedio 6.9% (rango 0.4%–33.3%) sobre 51 de 62 productos entrenados — los 11 restantes no tenían historial suficiente en el régimen de ventas estable y quedaron correctamente excluidos en vez de forzar un modelo poco confiable.
 
 ---
 
-## Tabla Completa — predicciones_2026
+## Modelo 2 — Forecast mensual agregado
 
-Schema de la tabla en PostgreSQL:
+**Salida:** suma de las predicciones diarias del Modelo 1 para el mes calendario siguiente completo, con banda de confianza acumulada, en `predicciones_mes_siguiente`.
 
-| Columna | Tipo | Descripcion |
-|---------|------|-------------|
-| `producto` | TEXT | Nombre del producto |
-| `mes` | DATE | Primer dia del mes (2026-01-01 … 2026-12-01) |
-| `ingresos_real` | NUMERIC | Valor historico real (NULL si no existe) |
-| `ingresos_pred` | NUMERIC | Prediccion lineal del modelo |
-| `unidades_pred` | NUMERIC | Unidades estimadas (pred / precio medio) |
-| `modelo` | TEXT | `LinearRegression` o `promedio` |
-| `r2_score` | NUMERIC | R² del modelo (1.0 = ajuste perfecto) |
-| `generado_en` | TIMESTAMPTZ | Timestamp de generacion |
+No es un modelo nuevo — es agregación SQL sobre la salida del Modelo 1, con una vista adicional (`forecast_top_productos_mes`) que compara la predicción contra lo que va del mes en curso.
 
-Consulta de verificacion:
+---
+
+## Modelo 3 — Modelo mensual directo
+
+**Salida:** predicción del total mensual por producto entrenada directamente sobre series mensuales (no acumulando 31 predicciones diarias), en `predicciones_mensuales`.
+
+| Historia disponible | Método usado |
+|:---|:---|
+| 1 mes | Baseline: promedio diario × días del mes |
+| 2 meses | Fórmula de tendencia simple |
+| 3–4 meses | Regresión Ridge |
+| ≥5 meses | GradientBoosting (con quantile P10/P90 desde 9 meses) |
+
+Cada predicción trae una etiqueta de **confianza** (ALTA/MEDIA/BAJA) calculada con Leave-One-Out cross-validation — no con el error de entrenamiento, que sería engañosamente optimista con tan pocos puntos.
+
+> Con el volumen de datos de este proyecto (poco más de un mes completo de historia), la mayoría de productos caen todavía en confianza BAJA o MEDIA. Es el comportamiento esperado y documentado del modelo, no un error: mejora automáticamente mes a mes sin cambiar código, a medida que se acumula más historial real.
+
+---
+
+## Modelo 4 — Segmentación de clientes
+
+**Salida:** cada uno de los 1,106 clientes clasificado en VIP / Regular / En Riesgo, en `segmentos_clientes`.
+
+| Segmento | Clientes | Valor medio |
+|:---:|:---:|:---:|
+| VIP | 203 | S/ 7,662 |
+| Regular | 204 | S/ 439 |
+| En Riesgo | 699 | S/ 329 |
+
+---
+
+## Modelo 5 — Detección de anomalías
+
+**Salida:** días con ventas anormales por producto, clasificados como `ALTA_VENTA`, `CAIDA_VENTAS` o `INUSUAL`, en `anomalias_detectadas`.
+
+**Resultado:** 155 anomalías detectadas en 56 productos, usando siempre los últimos 60 días *de datos reales* como referencia (no días de calendario), para no confundir "sin datos todavía" con "venta en cero".
+
+---
+
+## Modelo 6 — Predicción por vendedor
+
+**Salida:** forecast de ingresos semanales por vendedor para las próximas 8 semanas, en `predicciones_vendedor`.
+
+Arranca siempre desde la semana inmediatamente posterior al último dato real disponible — no desde "la semana actual del calendario" — para que los lags del modelo no queden desalineados si hay un salto entre el fin de los datos y la fecha de ejecución.
+
+---
+
+## De la predicción a la alerta operativa
+
+Las predicciones del Modelo 1 no se quedan estáticas hasta el próximo reentrenamiento: `job_ml_streaming.py` las usa **cada 30 segundos** para comparar el acumulado real del día contra la banda P10/P90 y clasificar cada producto en `SOBRE_META` / `EN_META` / `EN_RIESGO` / `BAJO_META`, escribiendo en `ventas_ml_scored`. Esa es la diferencia entre "un reporte que se genera cada 30 minutos" y "una alerta que reacciona en el mismo minuto en que entra una venta".
+
+---
+
+## Consulta de verificación
 
 ```sql
-SELECT producto, mes,
-       ROUND(ingresos_real::NUMERIC, 2) AS real,
-       ROUND(ingresos_pred::NUMERIC, 2) AS prediccion,
-       ROUND(r2_score::NUMERIC, 4)      AS r2,
-       modelo
-FROM predicciones_2026
-ORDER BY mes, ingresos_pred DESC;
+-- Forecast del mes siguiente, top 10 por producto
+SELECT producto,
+       ROUND(total_pred::NUMERIC, 0) AS pred,
+       ROUND(total_low::NUMERIC,  0) AS p10,
+       ROUND(total_high::NUMERIC, 0) AS p90,
+       confianza, metodo
+FROM ranking_mes_siguiente
+LIMIT 10;
+
+-- Calidad del modelo GBM por producto
+SELECT producto,
+       ROUND(r2::NUMERIC, 3)   AS r2,
+       ROUND(mape::NUMERIC, 1) AS mape_pct,
+       n_muestras
+FROM model_metadata
+WHERE modelo = 'productos'
+ORDER BY mape;
 ```
 
 ---
 
-## Limitaciones y Consideraciones
+## Limitaciones honestas
 
-> **Advertencia:** El modelo fue entrenado con solo **2 puntos de datos** (Abril y Mayo 2026). Con tan pocos datos historicos, la regresion lineal extrapola la tendencia reciente de manera agresiva. Los resultados deben interpretarse como **proyecciones de tendencia** y no como predicciones estadisticamente significativas.
-
-Para un modelo mas robusto se recomienda:
-
-1. Acumular al menos 12 meses de datos historicos
-2. Incorporar estacionalidad (Fourier features o SARIMA)
-3. Incluir variables exogenas (dias festivos, promociones, precio de insumos)
-4. Usar modelos de series de tiempo especializados (Prophet, ARIMA, XGBoost con lags)
+- El modelo mensual directo (Modelo 3) y el modelo por vendedor (Modelo 6) todavía tienen poco historial — sus bandas de confianza se van a estrechar a medida que el pipeline siga corriendo y acumule meses.
+- Todos los modelos entrenan exclusivamente sobre datos de IFERSAN; no hay transferencia de conocimiento entre empresas ni generalización a otros rubros.
+- El pico de ventas de mediados de mayo (un cambio temporal y real en un límite de la API del ERP, no un error del pipeline) sigue siendo la razón por la que el Modelo 1 usa una ventana de entrenamiento corta (35 días) en vez de todo el historial disponible — ver el detalle en [Los 6 Modelos de ML](../componentes/ml-prediccion.md).

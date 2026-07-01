@@ -1,56 +1,54 @@
-# Consumer Excel Parser
+# Consumer Excel/HTML Parser
 
-**Archivo:** `consumer/consumer_excel_parser.py` — 265 lineas  
-**Imagen Docker:** `casamarket-python:latest`  
+**Archivo:** `consumer/consumer_excel_parser.py` — 270 líneas
+**Imagen Docker:** `casamarket-python:latest`
 **Topic de salida:** `casamarket.ventas.raw`
 
 ---
 
 ## Responsabilidad
 
-Escanea el directorio `/output/descargas/` cada 60 segundos en busca de archivos nuevos `.xlsx` y `.html`. Parsea cada fila del Excel como un mensaje JSON independiente y lo publica al topic `casamarket.ventas.raw`. Implementa normalizacion avanzada de nombres de columna para manejar las variaciones entre reportes del ERP.
+A diferencia de los otros dos componentes de ingesta, **este no es un consumer de Kafka**: es un escáner de directorio. Cada 60 segundos revisa `output/descargas/` buscando archivos `.xlsx`/`.xls`/`.html` nuevos, parsea cada fila con pandas y publica cada una como un mensaje independiente en `casamarket.ventas.raw`. Implementa un sistema de normalización de columnas para absorber las variaciones de nombres entre reportes del ERP.
 
 ---
 
-## Flujo Interno
+## Flujo interno
 
 ```mermaid
 flowchart TD
-    START([Inicio]) --> INIT["KafkaProducer\nvalue_serializer=json\nacks=all"]
-    INIT --> LOAD_STATE["lee state_excel_parsed.json\n→ set de filenames procesados"]
+    START([Inicio]) --> INIT["KafkaProducer\nvalue_serializer=json"]
+    INIT --> LOAD_STATE["lee state_excel_parsed.json\n-> set de archivos procesados"]
     LOAD_STATE --> LOOP
 
-    subgraph LOOP["Ciclo cada 60s"]
-        SCAN["scandir(DOWNLOAD_DIR)\nfiltro: .xlsx, .html, .pdf"]
-        CHECK{"filename\nen state?"}
-        SKIP["CONTINUE"]
-        TYPE{"extension?"}
+    subgraph LOOP["Ciclo cada 60s (SCAN_INTERVAL)"]
+        SCAN["scandir(output/descargas/)\nfiltra: .xlsx, .xls, .html\nno presentes en state"]
+        TYPE{"extensión?"}
 
         subgraph XLSX["Parseo Excel"]
-            READ_XL["pd.read_excel(path)\nengine=openpyxl\ndtype=str"]
-            CLEAN_XL["drop filas/columnas vacias\neliminar Unnamed: cols"]
-            NORM["normalizar_columnas(df)\nNFKD Unicode\nregex [^a-z0-9]+\nmapeo 83 alias"]
+            READ_XL["pd.read_excel(engine=openpyxl, dtype=str)"]
+            CLEAN_XL["limpiar_df():\ndrop columnas unnamed/vacías\ndrop filas totalmente vacías"]
         end
 
         subgraph HTML["Parseo HTML"]
-            READ_HTML["pd.read_html(path)\nengine=lxml\nfallback html.parser"]
+            READ_HTML["pd.read_html(flavor=lxml)\nfallback: flavor por defecto"]
+            PICK["elige la tabla más grande\n(max(tablas, key=len))"]
         end
 
-        VALIDATE{"filas > 1?"}
-        SKIP2["log: sin datos"]
-        PUBLISH["Por cada fila:\nproducer.send(TOPIC, value=fila_dict)"]
-        FLUSH["producer.flush()\nstate += filename\nsave_state()"]
+        NORM["normaliza columnas:\nNFKD -> ascii -> minúsculas ->\nregex no-alfanumérico -> alias"]
+        VALIDATE{"filas >= MIN_ROWS (1)?"}
+        SKIP["log: vacío/error"]
+        PUBLISH["por cada fila:\nproducer.send(TOPIC_OUT, value=fila)"]
+        FLUSH["producer.flush()\nstate += filename"]
         SLEEP["sleep(60s)"]
 
-        SCAN --> CHECK
-        CHECK -->|"Si"| SKIP --> SLEEP
-        CHECK -->|"No"| TYPE
-        TYPE -->|".xlsx"| XLSX
+        SCAN --> TYPE
+        TYPE -->|".xlsx/.xls"| XLSX
         TYPE -->|".html"| HTML
-        XLSX --> VALIDATE
-        HTML --> VALIDATE
-        VALIDATE -->|"No"| SKIP2 --> SLEEP
-        VALIDATE -->|"Si"| PUBLISH --> FLUSH --> SLEEP
+        XLSX --> NORM
+        HTML --> PICK --> NORM
+        NORM --> VALIDATE
+        VALIDATE -->|"No"| SKIP --> SLEEP
+        VALIDATE -->|"Sí"| PUBLISH --> FLUSH --> SLEEP
     end
 
     LOAD_STATE --> LOOP
@@ -63,59 +61,43 @@ flowchart TD
 
 ---
 
-## Normalizacion de Columnas
+## Normalización de columnas
 
-Los reportes del ERP usan nombres de columna inconsistentes entre versiones. El parser implementa un sistema de 83 alias para mapear cualquier variacion al nombre canonico:
+Los reportes del ERP no siempre usan el mismo nombre de columna para el mismo dato (`"Cliente Nombre"`, `"cliente_nombre"`, `"Nombre Cliente"` pueden referirse a lo mismo). El parser aplica un diccionario de decenas de alias:
 
 ```python
-ALIAS = {
-    # Fecha
-    "fecha": "fecha",
-    "date": "fecha",
-    "fec": "fecha",
-
-    # Producto
-    "producto": "producto",
-    "descripcion": "producto",
-    "desc": "producto",
-    "articulo": "producto",
-
-    # Cantidad
-    "cantidad": "cantidad",
-    "cant": "cantidad",
-    "qty": "cantidad",
-    "unidades": "cantidad",
-
-    # Precio
-    "precio_unitario": "precio_unitario",
-    "precio": "precio_unitario",
-    "p_unit": "precio_unitario",
-
-    # Total
-    "total": "total",
-    "importe": "total",
-    "monto": "total",
-    "subtotal": "total",
-    # ... 70+ alias mas
+_ALIAS = {
+    "fecha": "fecha", "fecha_de_venta": "fecha", "date": "fecha", ...
+    "producto": "producto", "articulo": "producto", "item": "producto", ...
+    "cantidad": "cantidad", "qty": "cantidad", "unidades": "cantidad", ...
+    "precio_unitario": "precio_unitario", "precio": "precio_unitario", ...
+    "total": "total", "monto_total": "total", "importe": "total", ...
+    "cliente": "cliente", "cliente_nombre": "cliente", ...
+    "vendedor": "vendedor", "preventista": "vendedor", "empleado_nombre": "vendedor", ...
+    "hora": "hora", "hora_venta": "hora", ...       # hora recuperada del CSV original del ERP
+    # ...
 }
 ```
 
-**Proceso de normalizacion:**
-1. Convertir a minusculas
-2. Aplicar decomposicion Unicode NFKD (eliminar acentos)
-3. Reemplazar caracteres no alfanumericos con `_`
-4. Eliminar underscores multiples
-5. Buscar en diccionario de alias
+**Proceso de normalización (`_norm`)**:
+
+1. Descomposición Unicode NFKD y strip a ASCII (elimina tildes)
+2. Minúsculas
+3. `re.sub(r"[^a-z0-9]+", "_", col)` — cualquier carácter no alfanumérico se vuelve `_`
+4. Búsqueda en el diccionario de alias; si no hay match, se conserva el nombre normalizado tal cual
+
+> Nota de diseño documentada en el propio código: el alias `"descripcion"` fue **retirado deliberadamente** del mapeo hacia `producto`, porque en una versión anterior sobreescribía el campo `producto` real con el contenido de una columna de descripción libre, dejando `producto` vacío en el mensaje final.
 
 ---
 
-## Schema del Mensaje JSON
+## Esquema del mensaje JSON
 
-Cada fila del Excel genera un mensaje con estos 17 campos:
+Cada fila del Excel/HTML genera un mensaje con los campos no vacíos detectados (el esquema exacto puede variar levemente entre archivos):
 
 ```json
 {
   "fecha":           "2026-05-12",
+  "hora":             "21:30:27",
   "producto":        "PEPSI 2000ML",
   "cod_producto":    "PEP-001",
   "marca":           "LINEA PEPSI",
@@ -135,53 +117,46 @@ Cada fila del Excel genera un mensaje con estos 17 campos:
 }
 ```
 
-> Todos los campos numericos se envian como **strings** en Kafka. Spark realiza el casting a tipos numericos en el job de procesamiento.
+> Todos los campos numéricos se envían como **strings**: el parser lee con `dtype=str` para no perder ceros a la izquierda ni introducir errores de conversión prematuros. Es Spark quien realiza el casting a tipos numéricos en `job_ventas.py`.
 
 ---
 
-## Manejo de Formatos
+## Manejo de formatos
 
 === "Excel (.xlsx)"
     ```python
-    df = pd.read_excel(
-        path,
-        engine="openpyxl",
-        dtype=str           # todo como string para evitar conversiones
-    )
-    df.dropna(how="all", inplace=True)
-    df.dropna(axis=1, how="all", inplace=True)
-    df = df.loc[:, ~df.columns.str.startswith("Unnamed:")]
+    df = pd.read_excel(path, engine="openpyxl", dtype=str)
+    df = limpiar_df(df)   # drop columnas/filas vacías, columnas "unnamed"
     ```
 
 === "HTML (.html)"
     ```python
     try:
-        tables = pd.read_html(path, flavor="lxml")
+        tablas = pd.read_html(path, flavor="lxml")
     except Exception:
-        tables = pd.read_html(path, flavor="html.parser")
-    df = tables[0]  # primera tabla del documento
+        tablas = pd.read_html(path)   # flavor por defecto
+    df = max(tablas, key=len)   # la tabla con más filas del documento
     ```
 
 === "PDF (.pdf)"
-    Los archivos PDF son detectados pero no parseados (solo se registran en el log). El ERP CasaMarket genera principalmente reportes Excel e HTML.
+    Los archivos PDF son detectados por el downloader pero **no** son parseados por este componente — el ERP CasaMarket genera principalmente reportes Excel/HTML, así que el soporte de PDF quedó fuera de alcance.
 
 ---
 
-## Estadisticas de Procesamiento
+## Estadísticas de procesamiento
 
-| Metrica | Valor |
+| Métrica | Valor |
 |---------|-------|
 | Archivos procesados | 84 |
-| Archivos en `state_excel_parsed.json` | 215 (incluye variantes) |
-| Mensajes publicados | 16.794 |
+| Mensajes publicados | 16,794 |
 | Filas promedio por archivo | ~200 |
-| Tiempo de scan | Cada 60s |
+| Intervalo de escaneo | 60 s |
 
 ---
 
-## Variables de Entorno
+## Variables de entorno
 
-| Variable | Valor | Descripcion |
+| Variable | Valor | Descripción |
 |---------|-------|-------------|
-| `KAFKA_BOOTSTRAP` | `ec-kafka:9092` | Bootstrap del broker |
-| `DOWNLOAD_DIR` | `/app/output/descargas` | Directorio a escanear |
+| `KAFKA_BOOTSTRAP` | `ec-kafka:9092` (docker) / `localhost:19092` (host) | Bootstrap del broker |
+| `DOWNLOAD_DIR` | `/app/output/descargas` (docker) / `output/descargas` (host) | Directorio a escanear |

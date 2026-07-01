@@ -1,184 +1,119 @@
 # Grafana — Dashboards
 
-**Imagen:** `grafana/grafana:latest`  
-**Contenedor:** `grafana`  
-**Puerto host:** `43000`  
-**URL:** `http://localhost:43000`  
-**Credenciales:** `admin / casamarket`
+**Imagen:** `grafana/grafana:latest` · **Contenedor:** `grafana`
+**Puerto host:** `43000` · **URL:** `http://localhost:43000`
 
 ---
 
-## Datasources Provisionados
+## Datasources provisionados
 
-Los datasources se cargan automaticamente al iniciar el contenedor desde `observability/grafana/provisioning/datasources/ds.yml`:
+Se cargan automáticamente desde `observability/grafana/provisioning/datasources/ds.yml` al iniciar el contenedor:
 
-| Nombre | Tipo | URL / Host | Default |
-|--------|------|-----------|---------|
-| casamarket-prom | Prometheus | `http://prometheus:9090` | Si |
-| casamarket-pg | PostgreSQL | `postgres:5432` / db: casamarket | No |
+| Nombre | UID | Tipo | Host | Default |
+|--------|-----|------|-----------|---------|
+| Prometheus | `casamarket-prom` | prometheus | `http://prometheus:9090` | Sí |
+| PostgreSQL | `casamarket-pg` | postgres | `postgres:5432` / db `casamarket` | No |
 
----
-
-## Dashboard S8: Kafka + Spark
-
-**Archivo:** `observability/grafana/dashboards/kafka_spark.json`  
-**Proposito:** Metricas operativas del pipeline en tiempo real  
-**Datasource:** Prometheus
-
-```mermaid
-graph TD
-    subgraph D8["Dashboard: kafka_spark.json"]
-        P1["Kafka Broker\nUP / DOWN\nStat panel"]
-        P2["Topics activos\nconteo\nStat panel"]
-        P3["Mensajes por topic\noffsets actuales\nBar chart"]
-        P4["Consumer Lag\ngauge 0-1000\ncasamarket-downloader"]
-        P5["Rate mensajes/seg\ncasamarket.ventas.raw\nTime series"]
-        P6["Lag por consumer group\nTime series"]
-        P7["Detalle por grupo\nTable panel"]
-    end
-
-    style D8 fill:#E0F2F1,stroke:#004D40
-```
-
-### Paneles del Dashboard S8
-
-| Panel | Tipo | Metrica PromQL |
-|-------|------|---------------|
-| Kafka Broker UP/DOWN | Stat | `up{job="kafka-exporter"}` |
-| Topics activos | Stat | `count(kafka_topic_partitions)` |
-| Offset actual — documento.detectado | Stat | `kafka_topic_partition_current_offset{topic="casamarket.documento.detectado"}` |
-| Offset actual — ventas.raw | Stat | `kafka_topic_partition_current_offset{topic="casamarket.ventas.raw"}` |
-| Consumer Lag (Gauge) | Gauge (0-1000) | `kafka_consumergroup_lag_sum` |
-| Rate mensajes/s | Time series | `rate(kafka_topic_partition_current_offset{topic="casamarket.ventas.raw"}[5m])` |
-| Lag por consumer group | Time series | `kafka_consumergroup_lag` |
-| Tabla de grupos | Table | `kafka_consumergroup_lag_sum` |
+La contraseña de PostgreSQL se guarda como `secureJsonData` en el YAML de provisioning (encriptado por Grafana), no en texto plano en ningún dashboard.
 
 ---
 
-## Dashboard S9: Ventas CasaMarket
+## Dashboard "CasaMarket — Kafka + Spark S8"
 
-**Archivo:** `observability/grafana/dashboards/ventas_casamarket.json`  
-**Proposito:** Analisis de ventas historicas y predicciones ML 2026  
-**Datasource:** PostgreSQL
+**Archivo:** `observability/grafana/dashboards/kafka_spark.json` · **Datasource:** Prometheus · **10 paneles**
 
-```mermaid
-graph TD
-    subgraph D9["Dashboard: ventas_casamarket.json"]
-        subgraph KPI["KPIs — Fila superior"]
-            K1["Total Ingresos\nS/ 406.150,50\nStat"]
-            K2["Transacciones\n16.794\nStat"]
-            K3["Productos unicos\n62\nStat"]
-            K4["Clientes unicos\n1.106\nStat"]
-        end
-        subgraph HIST["Historico"]
-            H1["Ingresos diarios\nTime series"]
-            H2["Top 15 productos\nBar chart horizontal"]
-            H3["Top 10 clientes\nBar chart"]
-        end
-        subgraph DIST["Distribucion"]
-            D1["Ingresos por Marca\nDonut"]
-            D2["Ingresos por Categoria\nDonut"]
-            D3["Ingresos por Vendedor\nBar chart"]
-        end
-        subgraph TABLE["Detalle"]
-            T1["Ultimas 50 ventas\nTable panel"]
-        end
-        subgraph PRED["Predicciones ML 2026"]
-            M1["Proyeccion total 2026\nS/ 1.614.943,32\nStat"]
-            M2["PEPSI 2000ML 2026\nS/ 334.800\nStat"]
-            M3["Top 10: Real vs Prediccion\nBar chart doble"]
-            M4["Distribucion 2026\nDonut"]
-            M5["Tendencia mensual Ene-Dic\nTime series"]
-            M6["Tabla completa 180 filas\nTable"]
-        end
-    end
+| Panel | Tipo | Qué muestra |
+|-------|------|---|
+| Kafka Broker | stat | `up{job="kafka-exporter"}` — UP/DOWN |
+| Topics activos | stat | Conteo de topics |
+| Mensajes totales (ventas.raw) | stat | Offset actual del topic de ventas |
+| Mensajes totales (documento.detectado) | stat | Offset actual del topic de documentos |
+| Consumer Lag total | gauge | `kafka_consumergroup_lag_sum` |
+| Rate de mensajes por segundo (ventas.raw) | timeseries | `rate(...[5m])` |
+| Consumer Lag por grupo | timeseries | Lag desglosado por consumer group |
+| Offset actual por topic | timeseries | Evolución de offsets en el tiempo |
+| Consumer Groups — detalle de lag | table | Lag por partición y grupo |
+| Alertas activas S8 | alertlist | Estado de las 3 reglas de `alertas.yml` |
 
-    style D9 fill:#E0F2F1,stroke:#004D40
-    style KPI fill:#E8F5E9,stroke:#2E7D32
-    style PRED fill:#FCE4EC,stroke:#880E4F
-```
+---
 
-### Consultas SQL del Dashboard S9
+## Dashboard "IFERSAN — Panel de Ventas y Predicciones"
+
+**Archivo:** `observability/grafana/dashboards/ventas_casamarket.json` · **Datasource:** PostgreSQL · **41 paneles en 6 secciones**
+
+Este es el dashboard de negocio: mezcla ventas reales con la salida de los 6 modelos de ML, organizado en filas colapsables (`row`).
+
+### Resumen General — ¿cuánto ha vendido el negocio hasta hoy?
+
+Ingresos totales, transacciones registradas, productos en catálogo, clientes atendidos, ticket promedio, y una serie temporal de ingresos diarios.
+
+### Predicción — ¿qué productos venderán más el próximo mes?
+
+Top 3 productos del mes siguiente (Modelo 3), ranking de barras de los 20 productos con mayor predicción, y la tabla completa con nivel de confianza (ALTA/MEDIA/BAJA) — alimentada por `ranking_mes_siguiente`.
+
+### Estado de Hoy — ¿cuánto se está vendiendo vs. lo esperado?
+
+Tabla de ventas de hoy contra la meta diaria por producto (vista `estado_dia_actual`, la misma lógica de 4 alertas que corre en `job_ml_streaming.py`), y una tabla de ventas inusuales detectadas por el Modelo 5 (IsolationForest).
+
+### Pronóstico Detallado — ¿cuánto venderán los próximos 62 días?
+
+Proyección del mes siguiente con tres escenarios (probable / conservador P10 / optimista P90), timestamp del último reentrenamiento, serie histórica + pronóstico con banda de confianza, top 5 productos a 7 días, pronóstico por vendedor de la semana siguiente (Modelo 6), y un panel de "unidades a reponer" derivado directamente de `unidades_pred`.
+
+### Ventas Históricas — ¿qué se ha vendido y quién lo ha vendido?
+
+Top 15 productos, distribución por marca y categoría (donuts), desempeño por vendedor, clientes de mayor valor, patrón semanal de ventas por día, y una tabla de las últimas 50 ventas alimentada directamente desde el pipeline en tiempo real.
+
+### Clientes — perfil y clasificación de compradores
+
+Distribución de clientes por segmento (Modelo 4 — KMeans RFM) y tabla de perfiles ordenada por valor total de compras.
+
+### Precisión del Sistema — información técnica de calidad
+
+Tabla de `model_metadata`: R², MAE, RMSE, MAPE por producto — la manera de auditar, sin salir de Grafana, si el modelo GBM de un producto específico es confiable o no.
+
+---
+
+## Consultas SQL representativas
 
 === "KPIs"
     ```sql
-    -- Total ingresos
     SELECT ROUND(SUM(total)::NUMERIC, 2) FROM ventas WHERE total > 0;
-
-    -- Total transacciones
     SELECT COUNT(*) FROM ventas;
-
-    -- Productos unicos
     SELECT COUNT(DISTINCT producto) FROM ventas;
-
-    -- Clientes unicos
     SELECT COUNT(DISTINCT cliente) FROM ventas;
     ```
 
-=== "Historico"
+=== "Histórico"
     ```sql
-    -- Ingresos diarios (Time series)
-    SELECT
-        fecha AS time,
-        ROUND(SUM(total)::NUMERIC, 2) AS ingresos
-    FROM ventas
-    WHERE fecha IS NOT NULL AND total > 0
-    GROUP BY fecha
-    ORDER BY fecha;
-
-    -- Top 15 productos
-    SELECT producto, ROUND(SUM(total)::NUMERIC, 2) AS ingresos
-    FROM ventas WHERE total > 0
-    GROUP BY producto
-    ORDER BY ingresos DESC
-    LIMIT 15;
+    SELECT fecha AS time, ROUND(SUM(total)::NUMERIC, 2) AS ingresos
+    FROM ventas WHERE fecha IS NOT NULL AND total > 0
+    GROUP BY fecha ORDER BY fecha;
     ```
 
 === "Predicciones"
     ```sql
-    -- Proyeccion total 2026
-    SELECT ROUND(SUM(ingresos_pred)::NUMERIC, 2)
-    FROM predicciones_2026;
+    SELECT producto, ROUND(total_pred::NUMERIC,0) AS pred, confianza
+    FROM ranking_mes_siguiente LIMIT 20;
 
-    -- Tendencia mensual
-    SELECT
-        mes AS time,
-        SUM(ingresos_pred) AS prediccion,
-        SUM(ingresos_real) AS real
-    FROM predicciones_2026
-    GROUP BY mes
-    ORDER BY mes;
-
-    -- Top 10 real vs prediccion
-    SELECT
-        producto,
-        ROUND(SUM(ingresos_real)::NUMERIC, 2) AS real,
-        ROUND(SUM(ingresos_pred)::NUMERIC, 2) AS prediccion
-    FROM predicciones_2026
-    GROUP BY producto
-    ORDER BY prediccion DESC
-    LIMIT 10;
+    SELECT producto, ventas_hoy, prediccion_hoy, alerta
+    FROM estado_dia_actual ORDER BY alerta, producto;
     ```
 
 ---
 
-## Provisioning Automatico
-
-Los dashboards se cargan automaticamente via archivo de provisioning:
+## Provisioning automático
 
 **`observability/grafana/provisioning/dashboards/dashboard.yml`**
 
 ```yaml
 apiVersion: 1
-
 providers:
   - name: CasaMarket
     folder: CasaMarket
     type: file
-    disableDeletion: false
     updateIntervalSeconds: 30
     options:
       path: /var/lib/grafana/dashboards
 ```
 
-Cualquier archivo `.json` colocado en `observability/grafana/dashboards/` es cargado automaticamente al iniciar o actualizado cada 30 segundos.
+Cualquier archivo `.json` en `observability/grafana/dashboards/` se carga automáticamente al iniciar y se actualiza cada 30 segundos — no hace falta importar los dashboards a mano.

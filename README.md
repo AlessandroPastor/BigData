@@ -694,14 +694,7 @@ FROM model_metadata ORDER BY modelo, mape;
 ## Requisitos
 
 - Docker Desktop corriendo
-- Archivo `.env` en la raíz del proyecto:
-
-```env
-API_BASE_URL=https://admin.casamarket.la
-API_EMAIL=admin1@tomas.com
-API_PASSWORD=76284084
-COMPANY_ID=5588
-KAFKA_BOOTSTRAP=localhost:19092
+- Archivo `.env` en la raíz del proyecto
 ```
 
 > `COMPANY_ID=5588` identifica a IFERSAN dentro del ERP CasaMarket.
@@ -774,7 +767,7 @@ docker compose ps
   "status": "Finalizado",
   "url_file": "https://s3.amazonaws.com/casamarket-prod/...",
   "created_at": "2026-04-27T07:32:51Z",
-  "usuario": "admin1@tomas.com",
+  "usuario": "<email del usuario del ERP>",
   "detectado_en": "2026-05-26T03:47:28.000000+00:00"
 }
 ```

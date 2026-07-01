@@ -1,38 +1,45 @@
 # Consumer Downloader
 
-**Archivo:** `consumer/consumer_downloader.py` — 149 lineas  
-**Imagen Docker:** `casamarket-python:latest`  
-**Topic de entrada:** `casamarket.documento.detectado`  
+**Archivo:** `consumer/consumer_downloader.py` — 149 líneas
+**Imagen Docker:** `casamarket-python:latest`
+**Topic de entrada:** `casamarket.documento.detectado`
 **Consumer group:** `casamarket-downloader`
 
 ---
 
 ## Responsabilidad
 
-Consume eventos del topic `casamarket.documento.detectado`, descarga cada archivo desde su URL de Amazon S3 en modo streaming por chunks, y lo almacena en el directorio compartido `/output/descargas/`. Mantiene estado persistente para no re-descargar archivos ya obtenidos.
+Consume eventos del topic `casamarket.documento.detectado`, descarga cada archivo desde su URL en modo streaming por chunks, y lo guarda en el directorio compartido `output/descargas/`. Mantiene estado persistente para no volver a descargar archivos ya obtenidos.
 
 ---
 
-## Flujo Interno
+## Flujo interno
 
 ```mermaid
 flowchart TD
     START([Inicio]) --> INIT["KafkaConsumer\ngroup_id=casamarket-downloader\nauto_offset_reset=earliest\nenable_auto_commit=True"]
     INIT --> POLL
 
-    subgraph POLL["Bucle de consumo"]
-        MSG["poll() → mensaje"]
-        PARSE["json.loads(value)\nverifica status == 2"]
-        CHECK{"id en\nstate_downloads?"}
-        SKIP["log: ya descargado\nCONTINUE"]
-        SANITIZE["re.sub([<>:/\\|?*], '_', filename)\n+ extension"]
-        DOWNLOAD["requests.get(url_file, stream=True)\nResponse.iter_content(8192)"]
-        WRITE["open(filepath, 'wb')\nwrite chunks"]
-        STATE["state_downloads.json += id\nlog: descargado N bytes"]
+    subgraph POLL["Bucle de consumo (for message in consumer)"]
+        MSG["mensaje recibido"]
+        CHECK1{"doc_id en\nstate_downloads?"}
+        SKIP1["continue"]
+        CHECK2{"status == 2\n(Finalizado)?"}
+        SKIP2["continue (log debug)"]
+        CHECK3{"url_file\nvacío?"}
+        SKIP3["marca como descargado\nsin archivo, continue"]
+        SANITIZE["re.sub([&lt;&gt;:/\\\\|?*], '_', filename)"]
+        DOWNLOAD["requests.get(url, stream=True)\niter_content(chunk_size=8192)"]
+        WRITE["escribe archivo en\noutput/descargas/"]
+        STATE["state_downloads.json += doc_id"]
 
-        MSG --> PARSE --> CHECK
-        CHECK -->|"Si"| SKIP --> MSG
-        CHECK -->|"No"| SANITIZE --> DOWNLOAD --> WRITE --> STATE --> MSG
+        MSG --> CHECK1
+        CHECK1 -->|"Sí"| SKIP1 --> MSG
+        CHECK1 -->|"No"| CHECK2
+        CHECK2 -->|"No"| SKIP2 --> MSG
+        CHECK2 -->|"Sí"| CHECK3
+        CHECK3 -->|"Sí"| SKIP3 --> MSG
+        CHECK3 -->|"No"| SANITIZE --> DOWNLOAD --> WRITE --> STATE --> MSG
     end
 
     INIT --> POLL
@@ -43,74 +50,65 @@ flowchart TD
 
 ---
 
-## Descarga con Streaming
+## Descarga con streaming
 
-El downloader usa HTTP streaming para no cargar el archivo completo en memoria:
-
-```python
-response = requests.get(
-    url_file,
-    stream=True,
-    timeout=60
-)
-response.raise_for_status()
-
-with open(filepath, "wb") as f:
-    for chunk in response.iter_content(chunk_size=8192):
-        f.write(chunk)
-```
-
-**Chunk size:** 8.192 bytes (~8 KB por iteracion)
-
----
-
-## Sanitizacion de Nombres de Archivo
-
-Los nombres de archivo del ERP pueden contener caracteres que no son validos en sistemas de archivos Windows/Linux:
+El downloader no carga el archivo completo en memoria: lo escribe a disco en chunks de 8 KB conforme llegan.
 
 ```python
-import re
+resp = requests.get(url, timeout=60, stream=True)
+resp.raise_for_status()
 
-safe_name = re.sub(r'[<>:"/\\|?*]', '_', filename)
-filepath = Path(DOWNLOAD_DIR) / f"{safe_name}.{extension}"
+with output_path.open("wb") as f:
+    for chunk in resp.iter_content(chunk_size=8192):
+        if chunk:
+            f.write(chunk)
 ```
 
-Ejemplo:
-- **Original:** `Reporte, Nombre de Ruta: JHONATAN/27-04`
-- **Sanitizado:** `Reporte_ Nombre de Ruta_ JHONATAN_27-04`
+Si el archivo destino ya existe en disco, la descarga se omite directamente (`output_path.exists()`), una segunda capa de protección además del archivo de estado.
 
 ---
 
-## Directorio de Salida
+## Sanitización de nombres de archivo
 
-```
-output/descargas/                     44 MB total
-├── *.xlsx                           Reportes de ventas (mayoria)
-├── *.html                           Reportes HTML
-└── *.pdf                            Documentos PDF
-```
+Los nombres de archivo del ERP pueden traer caracteres inválidos para el sistema de archivos:
 
-**Total:** 84 archivos descargados del periodo Abril–Mayo 2026.
+```python
+safe_name = re.sub(r'[<>:"/\\|?*]', "_", filename)
+output_path = DOWNLOAD_DIR / f"{safe_name}.{extension}"
+```
 
 ---
 
-## Estado Persistente
+## Directorio de salida
+
+```
+output/descargas/          # 44 MB en total
+├── *.xlsx                 # reportes de ventas (mayoría)
+├── *.html                 # reportes HTML
+└── *.pdf                  # documentos PDF (detectados, no parseados por el siguiente componente)
+```
+
+**Total:** 84 archivos descargados en el periodo procesado (27 abril – 19 mayo 2026).
+
+---
+
+## Estado persistente
 
 **Archivo:** `consumer/state_downloads.json`
 
 ```json
 {
-  "ids": [180472, 180473, ..., 183454]
+  "ids": [180472, 180473, "...", 183454]
 }
 ```
 
-Sincronizado con `state_documentos.json` del producer: los mismos 175 IDs.
+Sincronizado conceptualmente con `state_documentos.json` del producer — los mismos IDs, pero como archivo de estado independiente (cada componente tiene el suyo, no comparten un único store).
 
 ---
 
-## Variables de Entorno
+## Variables de entorno
 
-| Variable | Valor | Descripcion |
+| Variable | Valor | Descripción |
 |---------|-------|-------------|
-| `KAFKA_BOOTSTRAP` | `ec-kafka:9092` | Bootstrap del broker |
-| `DOWNLOAD_DIR` | `/app/output/descargas` | Directorio de destino |
+| `KAFKA_BOOTSTRAP` | `ec-kafka:9092` (docker) / `localhost:19092` (host) | Bootstrap del broker |
+| `DOWNLOAD_DIR` | `/app/output/descargas` (docker) / `output/descargas` (host) | Directorio de destino |

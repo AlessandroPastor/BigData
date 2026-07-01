@@ -1,6 +1,6 @@
 site_name: CasaMarket BigData Pipeline
-site_description: Pipeline de Big Data en tiempo real para distribucion de bebidas — Unidad II
-site_author: Alexander Sandoval
+site_description: Pipeline de Big Data en tiempo real (arquitectura Kappa) con 6 modelos de Machine Learning, sobre datos reales de IFERSAN — Unidad II
+site_author: Alessandro Pastor Mamani Mamani, Cabana Sulca Cristian, Montes Mamani Andres Lino, Fernandez Sanchez Jean Piero
 site_url: https://localhost
 
 theme:
@@ -90,12 +90,14 @@ nav:
     - Consumer Downloader: componentes/consumer-downloader.md
     - Consumer Excel Parser: componentes/consumer-parser.md
     - Spark Streaming: componentes/spark-streaming.md
-    - Prediccion ML: componentes/ml-prediccion.md
+    - Los 6 Modelos de ML: componentes/ml-prediccion.md
+    - Web de Predicciones (ml-web): componentes/ml-web.md
   - Datos:
     - datos/index.md
+    - "¿De dónde viene la data?": datos/origen-datos.md
     - Topicos Kafka: datos/kafka-topics.md
     - PostgreSQL: datos/postgresql.md
-    - Sincronizacion MySQL: datos/mysql-sync.md
+    - Sincronizacion MySQL (opcional): datos/mysql-sync.md
   - Observabilidad:
     - observabilidad/index.md
     - Prometheus: observabilidad/prometheus.md
@@ -104,6 +106,6 @@ nav:
   - Resultados:
     - resultados/index.md
     - Metricas del Sistema: resultados/metricas.md
-    - Predicciones 2026: resultados/predicciones.md
+    - Predicciones ML: resultados/predicciones.md
   - Despliegue:
     - despliegue/index.md

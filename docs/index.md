@@ -1,115 +1,137 @@
 # CasaMarket BigData Pipeline
 
-**Pipeline de ingesta y procesamiento de datos en tiempo real para distribucion de bebidas**
+**Pipeline de Big Data en tiempo real (arquitectura Kappa) con 6 modelos de Machine Learning, construido sobre datos reales de una distribuidora de bebidas**
 
 ---
 
-## Descripcion General
+## El problema que resolvemos
 
-El sistema implementa una **arquitectura Kappa** de Big Data que captura documentos de ventas desde el ERP CasaMarket, los procesa mediante Apache Kafka y Apache Spark Structured Streaming, y genera predicciones de demanda con Machine Learning para los 15 productos principales.
+**CasaMarket** es un ERP peruano de gestión de ventas que usan distribuidoras, ferreterías y bodegas. Sus vendedores en campo cierran ventas todo el día, pero la gerencia solo puede ver esos datos **al día siguiente**, en un Excel de cientos de filas que alguien debe descargar y revisar a mano.
 
-Los datos corresponden a transacciones reales de la empresa distribuidora **Fernandez Cala Tomas (IFERSAN)**, procesando ventas del periodo **Abril — Mayo 2026**.
+Este proyecto usa como caso real a **IFERSAN**, una distribuidora de bebidas (Pepsi, Inca Kola, Coca-Cola, Escocesa, Pilsen) en Juliaca, Puno, que opera dentro de CasaMarket. Construimos un pipeline que toma esos mismos datos — sin cambiar el ERP del cliente — y los convierte en información en tiempo real con predicciones de Machine Learning.
+
+> Si quieres entender exactamente de dónde sale cada dato y cómo llega hasta el modelo de ML, la página **[¿De dónde viene la data?](datos/origen-datos.md)** sigue el camino completo: desde el vendedor cerrando una venta en el celular hasta la predicción que aparece en Grafana.
 
 ---
 
-## Diagrama de Alto Nivel
+## La idea: Arquitectura Kappa
+
+En vez de tener un proceso batch nocturno (que es como sigue funcionando CasaMarket hoy) optamos por **arquitectura Kappa**: todo pasa por un único stream de eventos en Kafka, sin una capa batch separada que mantener.
 
 ```mermaid
 flowchart LR
-    ERP["ERP CasaMarket\nacl.casamarketapp.com"]
-    PROD["Producer\nPython"]
-    K1["Topic\ndocumento.detectado"]
+    ERP["ERP CasaMarket\nadmin.casamarket.la"]
+    PROD["Producer\nPython · poll 300s"]
+    K1["Kafka\ndocumento.detectado"]
     DL["Consumer\nDownloader"]
-    S3["Amazon S3\nExcel / PDF"]
-    PARSE["Consumer\nExcel Parser"]
-    K2["Topic\nventas.raw"]
+    PARSE["Consumer\nExcel/HTML Parser"]
+    K2["Kafka\nventas.raw"]
     SPARK["Spark Structured\nStreaming"]
-    PG["PostgreSQL 16\nventas"]
-    MY["MySQL\nLaragon"]
-    ML["ML\nLinearRegression"]
-    GF["Grafana\nDashboards"]
-    PROM["Prometheus\n+ Alertas"]
+    PG["PostgreSQL 16"]
+    MLT["ml-trainer\n6 modelos · cada 30 min"]
+    GF["Grafana\n2 dashboards"]
+    WEB["ml-web\nFastAPI + Chart.js"]
 
-    ERP -->|"REST API\nJWT"| PROD
-    PROD -->|"30.372 msgs"| K1
+    ERP -->|"REST API + JWT"| PROD
+    PROD --> K1
     K1 --> DL
-    DL -->|"stream\nHTTPS"| S3
-    S3 -->|"84 archivos\n44 MB"| DL
-    DL -->|"output/descargas"| PARSE
-    PARSE -->|"16.794 msgs"| K2
+    DL -->|"descarga Excel/HTML"| PARSE
+    PARSE --> K2
     K2 --> SPARK
-    SPARK -->|"Parquet"| PG
-    SPARK -->|"Debezium CDC"| MY
-    PG --> ML
-    ML -->|"predicciones_2026\n180 filas"| PG
+    SPARK -->|"append"| PG
+    PG --> MLT
+    MLT -->|"predicciones"| PG
     PG --> GF
-    PROM -->|"metricas"| GF
+    PG --> WEB
 
     style ERP fill:#E3F2FD,stroke:#1565C0
     style K1 fill:#FFF3E0,stroke:#E65100
     style K2 fill:#FFF3E0,stroke:#E65100
     style SPARK fill:#E8F5E9,stroke:#2E7D32
     style PG fill:#F3E5F5,stroke:#6A1B9A
-    style ML fill:#FCE4EC,stroke:#880E4F
+    style MLT fill:#FCE4EC,stroke:#880E4F
     style GF fill:#E0F2F1,stroke:#00695C
 ```
 
----
-
-## Metricas Clave
-
-| Indicador | Valor |
-|-----------|-------|
-| Transacciones procesadas | **16.794** |
-| Ingresos registrados | **S/ 406.150,50** |
-| Productos unicos | **62** |
-| Clientes unicos | **1.106** |
-| Documentos descargados | **84 archivos (44 MB)** |
-| Mensajes en Kafka | **47.166 total** |
-| Throughput Spark (carga) | **6.074 msg/s** |
-| Proyeccion ML 2026 | **S/ 1.614.943,32** |
+Cada venta registrada en CasaMarket aparece en Grafana en **menos de 8 minutos**, con predicciones ML actualizadas cada 30 minutos — sin que nadie tenga que abrir un Excel.
 
 ---
 
-## Modulos del Sistema
+## Métricas reales del periodo procesado (27 abril – 19 mayo 2026)
+
+<div class="grid-3">
+<div class="metric-card"><div class="value">16,794</div><div class="label">Transacciones reales</div></div>
+<div class="metric-card"><div class="value">S/ 406,150.50</div><div class="label">Ingresos registrados</div></div>
+<div class="metric-card"><div class="value">62</div><div class="label">Productos únicos</div></div>
+<div class="metric-card"><div class="value">1,106</div><div class="label">Clientes únicos</div></div>
+<div class="metric-card"><div class="value">30,372</div><div class="label">Mensajes Kafka totales</div></div>
+<div class="metric-card"><div class="value">6,074 msg/s</div><div class="label">Throughput Spark (re-proceso)</div></div>
+</div>
+
+Estos números no son sintéticos: son el resultado de correr el pipeline completo contra la cuenta real de IFERSAN en CasaMarket. El detalle completo está en **[Resultados](resultados/index.md)**.
+
+---
+
+## Los 6 modelos de Machine Learning
+
+A diferencia de un modelo único, el sistema entrena **6 modelos especializados** cada 30 minutos, cada uno respondiendo una pregunta de negocio distinta:
+
+| # | Modelo | Algoritmo | Pregunta que responde |
+|:---:|:---|:---|:---|
+| 1 | GBM diario por producto | `GradientBoostingRegressor` + quantile P10/P90 | ¿Cuánto venderá cada producto cada día de los próximos 62 días? |
+| 2 | Forecast mensual agregado | Agregación de (1) | ¿Cuánto venderemos el próximo mes en total, con banda de incertidumbre? |
+| 3 | Modelo mensual directo | GBM / Ridge / baseline (adaptativo) | ¿Cuál será el total del próximo mes por producto, sin acumular error diario? |
+| 4 | Segmentación de clientes | `KMeans` sobre RFM | ¿Qué clientes son VIP, cuáles están en riesgo de irse? |
+| 5 | Detección de anomalías | `IsolationForest` | ¿Qué días tuvo un producto ventas anormales (pico o caída)? |
+| 6 | Predicción por vendedor | `GradientBoostingRegressor` semanal | ¿Cuánto venderá cada vendedor en las próximas 8 semanas? |
+
+Cada modelo se construyó iterando sobre problemas reales encontrados en los datos (regímenes de venta que cambiaron a mitad del periodo, un cliente que distorsionaba los clusters, bandas de confianza inútiles, etc.) — el detalle de cada decisión de diseño está en **[Los 6 Modelos de ML](componentes/ml-prediccion.md)**.
+
+---
+
+## Módulos del sistema
 
 === "Ingesta"
-    **Producer** autentica contra la API REST del ERP cada 300 segundos, descarga el listado de documentos finalizados y publica cada evento al topic `casamarket.documento.detectado`.
+    **Producer** se autentica contra la API REST del ERP CasaMarket cada 300 segundos, detecta documentos nuevos y publica un evento por cada uno al topic `casamarket.documento.detectado`.
 
-=== "Descarga"
-    **Consumer Downloader** consume el topic de documentos y descarga los archivos Excel/PDF directamente desde las URLs firmadas de Amazon S3, almacenandolos en `/output/descargas/`.
-
-=== "Parseo"
-    **Consumer Excel Parser** escanea el directorio de descargas cada 60 segundos, parsea los archivos Excel con `openpyxl` y publica cada fila de venta como un mensaje JSON al topic `casamarket.ventas.raw`.
+=== "Descarga y parseo"
+    **Consumer Downloader** descarga cada archivo Excel/HTML. **Consumer Excel Parser** escanea esa carpeta cada 60s, normaliza columnas con un diccionario de alias y publica cada fila de venta como mensaje en `casamarket.ventas.raw`.
 
 === "Procesamiento"
-    **Spark Structured Streaming** consume ambos topics con trigger de 30 segundos, escribe en formato Parquet, persiste en PostgreSQL y sincroniza con MySQL via Debezium CDC.
+    **Spark Structured Streaming** consume ambos topics con triggers de 30s: persiste en PostgreSQL y Parquet, y un tercer job (`job_ml_streaming.py`) compara en tiempo real las ventas del día contra la predicción del modelo GBM.
+
+=== "Machine Learning"
+    **ml-trainer** reentrena los 6 modelos cada 30 minutos contra PostgreSQL. **ml-web** expone un panel FastAPI + Chart.js con el ranking de productos, forecast por producto y segmentos de clientes.
 
 === "Observabilidad"
-    **Prometheus + Grafana** con dos dashboards: metricas operativas Kafka/Spark (S8) y analisis de ventas con predicciones ML (S9).
+    **Prometheus + Grafana**: un dashboard operativo de Kafka/Spark y un dashboard de negocio con ventas reales + predicciones ML.
 
 ---
 
-## Stack Tecnologico
+## Stack tecnológico
 
-| Capa | Tecnologia | Version |
+| Capa | Tecnología | Versión |
 |------|-----------|---------|
-| Mensaje | Apache Kafka (KRaft) | 3.7.0 |
-| Procesamiento | Apache Spark Structured Streaming | 3.5.1 |
+| Mensajería | Apache Kafka (KRaft, sin ZooKeeper) | 3.7.0 |
+| Procesamiento en streaming | Apache Spark Structured Streaming | 3.5.1 |
 | Almacenamiento | PostgreSQL | 16 |
-| Replicacion | Debezium CDC | 2.7 |
-| Machine Learning | scikit-learn LinearRegression | — |
-| Observabilidad | Prometheus + Grafana | Latest |
-| Orquestacion | Docker Compose | — |
+| Machine Learning | scikit-learn (GradientBoosting, KMeans, IsolationForest, Ridge) | 1.4+ |
+| Web de predicciones | FastAPI + Chart.js | — |
+| Observabilidad | Prometheus + Grafana | latest |
+| Orquestación | Docker Compose | 17 servicios |
 | Lenguaje | Python | 3.12 |
 
 ---
 
-## Sesiones del Curso
+## Mapa de esta documentación
 
-| Sesion | Tema | Componente |
-|--------|------|-----------|
-| S6 | Kafka para ingesta en tiempo real | Producer + Consumer Downloader |
-| S7 | Procesamiento en Streaming con Spark | Consumer Parser + Spark Jobs |
-| S8 | Observabilidad de pipelines | Prometheus + Grafana (kafka_spark.json) |
-| S9 | ML distribuido con regresion | prediccion_ventas.py + Dashboard ventas |
+| Sección | Qué vas a encontrar |
+|---------|---------------------|
+| [Arquitectura](arquitectura/index.md) | Patrón Kappa, diagrama completo, red Docker |
+| [Componentes](componentes/index.md) | Cada script del pipeline, línea por línea explicado |
+| [Datos](datos/index.md) | De dónde viene la data, topics de Kafka, esquema PostgreSQL |
+| [Observabilidad](observabilidad/index.md) | Dashboards Grafana, métricas Prometheus, alertas |
+| [Resultados](resultados/index.md) | Números reales del pipeline corriendo con datos de IFERSAN |
+| [Despliegue](despliegue/index.md) | Cómo levantar el sistema completo con Docker Compose |
+
+> **Nota sobre credenciales:** esta documentación está pensada para mostrarse a otros estudiantes. Las credenciales reales del ERP CasaMarket (usuario/clave de IFERSAN) viven únicamente en un archivo `.env` que **no está versionado en git** y no aparece en ninguna página de este sitio. Donde antes había una contraseña real, ahora hay un valor de ejemplo.

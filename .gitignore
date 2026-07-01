@@ -56,3 +56,6 @@ desktop.ini
 # Spark
 derby.log
 metastore_db/
+
+# MkDocs build output
+site/
